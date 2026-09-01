@@ -1,0 +1,28 @@
+# Local agent runtime state
+.opencode/
+.codex/
+.claude/
+.pi/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Tooling caches
+node_modules/
+__pycache__/
+*.pyc
+.ruff_cache/
+.mypy_cache/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Secrets / env
+.env
+.env.*
+!.env.example
