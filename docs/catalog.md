@@ -6,11 +6,9 @@ The index of everything shippable in this toolkit. Updated when skills, hooks, a
 
 | Name | Description | Status |
 |------|-------------|--------|
-| [github-review](../skills/github-review/) | Review a GitHub PR with structured, severity-tagged feedback. | scaffold |
-| [deep-research](../skills/deep-research/) | Multi-source research workflow for open-ended questions. | scaffold |
-| [release-check](../skills/release-check/) | Pre-release sanity checks before tagging a version. | scaffold |
 | [c-engineering](../skills/c-engineering/) | Implement, review, debug, and optimize C programs, libraries, and systems. | stable |
 | [define-goal](../skills/define-goal/) | Define a clear, bounded goal for the session before acting on it. | stable |
+| [fanout](../skills/fanout/) | Fan out a prompt to one-shot local workers (Agy / OpenCode). | stable |
 | [go-engineering](../skills/go-engineering/) | Idiomatic Go implementation, review, and tooling. | stable |
 | [haskell](../skills/haskell/) | Haskell implementation, type-driven design, and review. | stable |
 | [pragmatic-engineering](../skills/pragmatic-engineering/) | Cross-language engineering principles and the `check_anti_bloat.py` enforcement script. | stable |
@@ -27,11 +25,7 @@ Status values: `scaffold` (placeholder exists), `draft` (real content, not valid
 
 ## Agents
 
-| Name | Description | Status |
-|------|-------------|--------|
-| [codex](../agents/codex/) | Codex-style profile. | scaffold |
-| [claude-code](../agents/claude-code/) | Claude Code-style profile. | scaffold |
-| [pi](../agents/pi/) | Pi-style profile. | scaffold |
+*None yet.* See [agents/](../agents/).
 
 ## Agent policies
 
@@ -43,8 +37,7 @@ Status values: `scaffold` (placeholder exists), `draft` (real content, not valid
 
 | Name | Description | Status |
 |------|-------------|--------|
-| [repo-inspector](../tools/repo-inspector/) | Inspect a repo's structure. | scaffold |
-| [context-builder](../tools/context-builder/) | Build a context bundle for an agent. | scaffold |
+| [fanout](../tools/fanout/) | Run bounded one-shot local workers (Agy / OpenCode) and collect structured results. | stable |
 
 ## Notable scripts
 

@@ -11,7 +11,7 @@ Hooks are small executable scripts invoked by agents at lifecycle points. They a
 ## Convention
 
 - Files are executable shell scripts. Bash is preferred; Python with a shebang is fine.
-- The script receives a JSON payload on stdin describing the event. See `references/event-schema.md` (TBD).
+- The script receives a JSON payload on stdin describing the event.
 - Exit code 0 = pass; non-zero = block (for pre-tool hooks) or warn (for post-tool hooks).
 - Keep them stateless. Anything stateful goes in `tools/`.
 

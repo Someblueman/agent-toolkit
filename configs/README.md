@@ -9,7 +9,6 @@ The source of truth lives in the top-level directories (`skills/`, `hooks/`, `ag
 ## Existing configs
 
 - [codex/](codex/) — OpenAI Codex adapter (TOML/JSON files Codex expects).
-- [claude/](claude/) — Claude Code adapter (settings.json, command files).
 
 ## Adding a new agent adapter
 

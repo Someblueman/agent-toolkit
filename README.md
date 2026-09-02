@@ -12,7 +12,7 @@ agent-toolkit/
 ├── skills/        # SKILL.md-style instructions agents can load
 ├── hooks/         # Pre-tool, post-tool, and session lifecycle hooks
 ├── agents/        # Reusable agent profiles (system prompts + tool allowlists)
-├── tools/         # Standalone tools scripts can invoke (repo-inspector, context-builder, ...)
+├── tools/         # Standalone tools scripts can invoke (fanout, ...)
 ├── scripts/       # install.sh, sync.sh, validate.sh — repo-level utilities
 ├── configs/       # Per-agent adapters that wire the above into Codex / Claude / ...
 ├── templates/     # Reusable prompt + project scaffolds

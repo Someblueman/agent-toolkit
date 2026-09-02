@@ -12,12 +12,10 @@ A tool lives at `tools/<tool-name>/`:
 
 Tools are designed to be callable from:
 
-- A shell: `tools/repo-inspector/bin/repo-inspector <args>`
+- A shell: `tools/fanout/bin/fanout <args>`
 - An agent hook: hooks wrap the call and translate events.
 - Another tool: tools may compose each other.
 
 ## Existing tools
 
 - [fanout/](fanout/) — run bounded one-shot local workers (Agy / OpenCode) and collect structured results.
-- [repo-inspector/](repo-inspector/) — placeholder.
-- [context-builder/](context-builder/) — placeholder.

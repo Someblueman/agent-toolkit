@@ -29,6 +29,6 @@ The `openai.yaml` files live here (not inside the shared skill) because they are
 
 ## Installing
 
-`scripts/install.sh codex` (TBD) will sync this adapter into `~/.codex/`.
+`scripts/install.sh codex` syncs this adapter into `~/.codex/`.
 
 The anti-bloat script lives at `skills/pragmatic-engineering/scripts/check_anti_bloat.py` and is installed at `~/.codex/scripts/check_anti_bloat.py` for convenience. The legacy shim at the same path (a 35-line wrapper) becomes unnecessary once the install script is wired up.

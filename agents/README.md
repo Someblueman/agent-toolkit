@@ -14,8 +14,6 @@ Vendors wire these profiles into their native format under `configs/<vendor>/`.
 
 ## Existing profiles
 
-- [codex/](codex/) — placeholder for an OpenAI Codex-style profile.
-- [claude-code/](claude-code/) — placeholder for a Claude Code-style profile.
-- [pi/](pi/) — placeholder for a Pi-style profile.
+*None yet.*
 
 Engineering policies (e.g. `AGENTS.md`) are **per-agent** and live under `configs/<agent>/`. This keeps each vendor's policy standalone and editable without touching the shared agent layer.
