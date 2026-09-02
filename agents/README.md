@@ -18,6 +18,4 @@ Vendors wire these profiles into their native format under `configs/<vendor>/`.
 - [claude-code/](claude-code/) — placeholder for a Claude Code-style profile.
 - [pi/](pi/) — placeholder for a Pi-style profile.
 
-## Shared policy
-
-- [global-policy.md](global-policy.md) — cross-agent engineering principles (anti-bloat, scope discipline, subagent restraint, …). Each vendor's adapter is responsible for installing it at the location that agent reads at session start.
+Engineering policies (e.g. `AGENTS.md`) are **per-agent** and live under `configs/<agent>/`. This keeps each vendor's policy standalone and editable without touching the shared agent layer.

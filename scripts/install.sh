@@ -11,7 +11,8 @@
 #   - The Codex interface metadata (openai.yaml) is placed at
 #     ~/.codex/skills/<name>/agents/openai.yaml so Codex's skill picker can read it.
 #     Source: configs/codex/skills/<name>/openai.yaml.
-#   - The global engineering policy is installed as ~/.codex/AGENTS.md.
+#   - The Codex-specific engineering policy is installed as ~/.codex/AGENTS.md.
+#     Source: configs/codex/AGENTS.md.
 #   - The anti-bloat enforcement script is installed as ~/.codex/scripts/check_anti_bloat.py.
 #
 # Drift policy: if a target file/dir already exists and differs from the repo copy, the
@@ -185,8 +186,8 @@ install_codex() {
 
   log "installing into $home (repo: $REPO_ROOT)"
 
-  # Global policy -> AGENTS.md
-  sync_file "$REPO_ROOT/agents/global-policy.md" "$home/AGENTS.md"
+  # Codex engineering policy -> AGENTS.md
+  sync_file "$REPO_ROOT/configs/codex/AGENTS.md" "$home/AGENTS.md"
 
   # Skills
   for skill_dir in "$skills_dir"/*/; do

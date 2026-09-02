@@ -1,6 +1,4 @@
-# Global Engineering Policy
-
-Cross-agent principles that any coding assistant in this toolkit should follow. Vendors install this file at the location their agent reads at session start (Codex: `~/.codex/AGENTS.md`, etc.).
+# Codex Global Policy
 
 ## Implementation Principles
 

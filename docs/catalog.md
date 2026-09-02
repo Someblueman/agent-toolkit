@@ -33,11 +33,11 @@ Status values: `scaffold` (placeholder exists), `draft` (real content, not valid
 | [claude-code](../agents/claude-code/) | Claude Code-style profile. | scaffold |
 | [pi](../agents/pi/) | Pi-style profile. | scaffold |
 
-## Shared policy
+## Agent policies
 
 | Name | Description | Status |
 |------|-------------|--------|
-| [global-policy](../agents/global-policy.md) | Cross-agent engineering principles (anti-bloat, scope discipline, subagent restraint). Installed by each vendor's adapter. | stable |
+| [codex/AGENTS.md](../configs/codex/AGENTS.md) | Codex engineering policy: anti-bloat, scope discipline, subagent restraint, tiered verification. Installed as `~/.codex/AGENTS.md`. | stable |
 
 ## Tools
 

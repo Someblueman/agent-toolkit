@@ -4,14 +4,15 @@ Wires the shared toolkit into OpenAI Codex.
 
 ## What this adapter does
 
-1. Installs [../../agents/global-policy.md](../../agents/global-policy.md) as `~/.codex/AGENTS.md`.
-2. Installs each shared skill under `~/.codex/skills/<name>/` (symlinked, where Codex supports it).
+1. Installs [AGENTS.md](AGENTS.md) as `~/.codex/AGENTS.md`.
+2. Installs each shared skill under `~/.codex/skills/<name>/` (real dir, files copied from the repo).
 3. Installs per-skill Codex metadata (`openai.yaml` interface manifests) at `~/.codex/skills/<name>/agents/openai.yaml` so Codex's skill picker can show a display name and short description.
 
 ## Layout
 
 ```
 configs/codex/
+├── AGENTS.md
 ├── README.md
 └── skills/
     ├── c-engineering/openai.yaml
@@ -24,10 +25,10 @@ configs/codex/
     └── typescript-engineering/openai.yaml
 ```
 
-The source `openai.yaml` files live here (not inside the shared skill) because they are Codex-specific manifests. The shared `skills/<name>/` directories are agent-agnostic.
+The `openai.yaml` files live here (not inside the shared skill) because they are Codex-specific manifests. The shared `skills/<name>/` directories are agent-agnostic. `AGENTS.md` is also Codex-specific — each agent ships its own policy under its own `configs/<agent>/` directory.
 
 ## Installing
 
 `scripts/install.sh codex` (TBD) will sync this adapter into `~/.codex/`.
 
-The anti-bloat script lives at `skills/pragmatic-engineering/scripts/check_anti_bloat.py` and should be runnable from any working directory. Codex currently exposes it via the legacy `~/.codex/scripts/check_anti_bloat.py` shim; the shim becomes unnecessary once the install script is in place.
+The anti-bloat script lives at `skills/pragmatic-engineering/scripts/check_anti_bloat.py` and is installed at `~/.codex/scripts/check_anti_bloat.py` for convenience. The legacy shim at the same path (a 35-line wrapper) becomes unnecessary once the install script is wired up.
