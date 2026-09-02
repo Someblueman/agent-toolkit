@@ -23,6 +23,7 @@ description: One-line summary of what this skill does and when to load it.
 
 ## Existing skills
 
+- [fanout/](fanout/) — fan out a prompt to one-shot local workers (Agy / OpenCode).
 - [github-review/](github-review/) — review a GitHub PR with structured feedback.
 - [deep-research/](deep-research/) — multi-source research workflow.
 - [release-check/](release-check/) — pre-release sanity checks.

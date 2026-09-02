@@ -18,5 +18,6 @@ Tools are designed to be callable from:
 
 ## Existing tools
 
+- [fanout/](fanout/) — run bounded one-shot local workers (Agy / OpenCode) and collect structured results.
 - [repo-inspector/](repo-inspector/) — placeholder.
 - [context-builder/](context-builder/) — placeholder.

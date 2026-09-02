@@ -1,0 +1,721 @@
+#!/usr/bin/env python3
+"""Run bounded one-shot Agy or OpenCode workers and collect structured results."""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import hashlib
+import json
+import os
+import shutil
+import signal
+import socket
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+TOOL_ROOT = Path(__file__).resolve().parent.parent
+SCHEMA_PATH = TOOL_ROOT / "schemas" / "worker-result.schema.json"
+OPENCODE_HELPER_PATH = TOOL_ROOT / "lib" / "opencode_worker.mjs"
+AGY_RESULT_KEYS = {"worker_id", "summary", "findings", "uncertainties"}
+OPENCODE_RECEIPT_KEYS = {"worker_id", "outcome", "summary", "result_json"}
+OPENCODE_OUTCOMES = {"completed", "blocked", "failed"}
+DEFAULT_MODELS = {
+    "agy": "gemini-3.7-flash-low",
+    "opencode": "opencode-go/minimax-m3",
+}
+
+
+def write_private(path: Path, data: bytes) -> None:
+    path.write_bytes(data)
+    path.chmod(0o600)
+
+
+def extract_tokens(usage: Any) -> int | None:
+    if not isinstance(usage, dict):
+        return None
+    if "total_tokens" in usage and isinstance(usage["total_tokens"], (int, float)):
+        return int(usage["total_tokens"])
+    if "tokens" in usage:
+        t = usage["tokens"]
+        if isinstance(t, (int, float)):
+            return int(t)
+        if isinstance(t, dict) and "total" in t and isinstance(t["total"], (int, float)):
+            return int(t["total"])
+    return None
+
+
+def extract_cost(usage: Any) -> float | None:
+    if not isinstance(usage, dict):
+        return None
+    if "cost" in usage and isinstance(usage["cost"], (int, float)):
+        return float(usage["cost"])
+    if "total_cost_usd" in usage and isinstance(usage["total_cost_usd"], (int, float)):
+        return float(usage["total_cost_usd"])
+    return None
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Fan out a trusted task prompt to one-shot local workers."
+    )
+    parser.add_argument("prompt_file", type=Path)
+    parser.add_argument("--harness", choices=("agy", "opencode"), default="agy")
+    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--concurrency", type=int, default=None)
+    parser.add_argument("--model")
+    parser.add_argument(
+        "--agent",
+        default="plan",
+        help="OpenCode built-in or custom agent (default: plan)",
+    )
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--working-directory", type=Path, default=Path.cwd())
+    parser.add_argument("--timeout-seconds", type=float, default=300.0)
+    parser.add_argument("--agy-retries", type=int, choices=(0, 1))
+    parser.add_argument("--max-output-bytes", type=int, default=1_000_000)
+    parser.add_argument("--min-results", type=int)
+    parser.add_argument("--agy", default="agy", help=argparse.SUPPRESS)
+    parser.add_argument("--opencode", default="opencode", help=argparse.SUPPRESS)
+    parser.add_argument("--node", default="node", help=argparse.SUPPRESS)
+    parser.add_argument("--opencode-sdk", type=Path, help=argparse.SUPPRESS)
+    return parser.parse_args()
+
+
+def resolve_executable(name: str, label: str) -> str:
+    executable_path = shutil.which(name)
+    if executable_path is not None:
+        return executable_path
+    candidate = Path(name).expanduser().resolve()
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+        return str(candidate)
+    raise ValueError(f"{label} executable not found: {name}")
+
+
+def resolve_opencode_sdk(explicit_path: Path | None) -> Path:
+    if explicit_path is not None:
+        candidates = [explicit_path.expanduser().resolve()]
+    else:
+        config_home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+        candidates = [
+            config_home
+            / "opencode"
+            / "node_modules"
+            / "@opencode-ai"
+            / "sdk"
+            / "dist"
+            / "v2"
+            / "index.js"
+        ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise ValueError(
+        "OpenCode SDK v2 not found; install @opencode-ai/sdk in the OpenCode config directory"
+    )
+
+
+def validate_args(
+    args: argparse.Namespace,
+) -> tuple[str, str | None, Path | None, Path, Path, Path]:
+    if not 1 <= args.workers <= 50:
+        raise ValueError("--workers must be between 1 and 50")
+    if args.concurrency is None:
+        args.concurrency = min(4, args.workers)
+    if not 1 <= args.concurrency <= args.workers:
+        raise ValueError("--concurrency must be between 1 and --workers")
+    if args.timeout_seconds <= 1:
+        raise ValueError("--timeout-seconds must be greater than 1")
+    if args.max_output_bytes < 1024:
+        raise ValueError("--max-output-bytes must be at least 1024")
+
+    if args.min_results is None:
+        args.min_results = args.workers
+    if not 1 <= args.min_results <= args.workers:
+        raise ValueError("--min-results must be between 1 and --workers")
+
+    if args.model is None:
+        args.model = DEFAULT_MODELS[args.harness]
+    if not args.agent.strip():
+        raise ValueError("--agent must not be empty")
+    if args.harness == "agy":
+        if args.agy_retries is None:
+            args.agy_retries = 1
+    elif args.agy_retries is not None:
+        raise ValueError("--agy-retries is only valid with --harness agy")
+
+    prompt_path = args.prompt_file.expanduser().resolve()
+    working_directory = args.working_directory.expanduser().resolve()
+    output = args.output.expanduser().resolve()
+    if not prompt_path.is_file():
+        raise ValueError(f"prompt file does not exist: {prompt_path}")
+    if not working_directory.is_dir():
+        raise ValueError(f"working directory does not exist: {working_directory}")
+    if args.harness == "agy" and not SCHEMA_PATH.is_file():
+        raise ValueError(f"worker result schema does not exist: {SCHEMA_PATH}")
+    if args.harness == "opencode" and not OPENCODE_HELPER_PATH.is_file():
+        raise ValueError(
+            f"OpenCode worker helper does not exist: {OPENCODE_HELPER_PATH}"
+        )
+    if output.exists() and any(output.iterdir()):
+        raise ValueError(f"output directory is not empty: {output}")
+
+    executable_name = args.agy if args.harness == "agy" else args.opencode
+    executable_path = resolve_executable(executable_name, args.harness)
+    node_path = None
+    sdk_path = None
+    if args.harness == "opencode":
+        node_path = resolve_executable(args.node, "node")
+        sdk_path = resolve_opencode_sdk(args.opencode_sdk)
+
+    return (
+        executable_path,
+        node_path,
+        sdk_path,
+        prompt_path,
+        working_directory,
+        output,
+    )
+
+
+def validate_agy_result(value: Any, worker_id: str) -> str | None:
+    if not isinstance(value, dict) or set(value) != AGY_RESULT_KEYS:
+        missing = AGY_RESULT_KEYS - set(value) if isinstance(value, dict) else AGY_RESULT_KEYS
+        extra = set(value) - AGY_RESULT_KEYS if isinstance(value, dict) else set()
+        if missing or extra:
+            return f"structured_output has unexpected fields (missing: {sorted(missing)}, extra: {sorted(extra)})"
+        return "structured_output must be a JSON object"
+    if value.get("worker_id") != worker_id:
+        return f"structured_output worker_id '{value.get('worker_id')}' does not match assigned worker '{worker_id}'"
+
+    summary = value.get("summary")
+    if not isinstance(summary, str) or not 1 <= len(summary) <= 2000:
+        return "summary must be a non-empty string of at most 2000 characters"
+
+    for field in ("findings", "uncertainties"):
+        items = value.get(field)
+        if not isinstance(items, list) or len(items) > 10:
+            return f"{field} must be an array of at most 10 strings"
+        if any(
+            not isinstance(item, str) or not 1 <= len(item) <= 500 for item in items
+        ):
+            return (
+                f"{field} entries must be non-empty strings of at most 500 characters"
+            )
+    return None
+
+
+def validate_opencode_receipt(
+    value: Any, worker_id: str
+) -> tuple[dict[str, Any] | None, str | None]:
+    if not isinstance(value, dict) or set(value) != OPENCODE_RECEIPT_KEYS:
+        missing = OPENCODE_RECEIPT_KEYS - set(value) if isinstance(value, dict) else OPENCODE_RECEIPT_KEYS
+        extra = set(value) - OPENCODE_RECEIPT_KEYS if isinstance(value, dict) else set()
+        if missing or extra:
+            return None, f"structured_output has unexpected fields (missing: {sorted(missing)}, extra: {sorted(extra)})"
+        return None, "structured_output must be a JSON object"
+    if value.get("worker_id") != worker_id:
+        return None, f"structured_output worker_id '{value.get('worker_id')}' does not match assigned worker '{worker_id}'"
+    if value.get("outcome") not in OPENCODE_OUTCOMES:
+        return None, "outcome must be completed, blocked, or failed"
+
+    summary = value.get("summary")
+    if not isinstance(summary, str) or not 1 <= len(summary) <= 2000:
+        return None, "summary must be a non-empty string of at most 2000 characters"
+    result_json = value.get("result_json")
+    if not isinstance(result_json, str):
+        return None, "result_json must be a string"
+    try:
+        payload = json.loads(result_json)
+    except json.JSONDecodeError:
+        return None, "result_json must contain valid JSON"
+    if not isinstance(payload, dict):
+        return None, "result_json must encode a JSON object"
+
+    return {
+        "worker_id": worker_id,
+        "outcome": value["outcome"],
+        "summary": summary,
+        "payload": payload,
+    }, None
+
+
+def available_tcp_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        return int(listener.getsockname()[1])
+
+
+async def terminate_process_group(process: asyncio.subprocess.Process) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        if process.returncode is None:
+            await process.wait()
+        return
+    if process.returncode is None:
+        try:
+            await asyncio.wait_for(process.wait(), timeout=3.0)
+        except TimeoutError:
+            pass
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    if process.returncode is None:
+        await process.wait()
+
+
+async def run_agy_attempt(
+    *,
+    worker_id: str,
+    attempt: int,
+    semaphore: asyncio.Semaphore,
+    agy_path: str,
+    model: str,
+    base_prompt: str,
+    working_directory: Path,
+    output: Path,
+    timeout_seconds: float,
+    max_output_bytes: int,
+) -> dict[str, Any]:
+    worker_dir = output / worker_id
+    worker_dir.mkdir(mode=0o700, exist_ok=True)
+    worker_dir.chmod(0o700)
+    attempt_dir = worker_dir / f"attempt-{attempt}"
+    attempt_dir.mkdir(mode=0o700, exist_ok=True)
+    attempt_dir.chmod(0o700)
+    stdout_path = attempt_dir / "stdout.json"
+    stderr_path = attempt_dir / "stderr.log"
+    log_path = attempt_dir / "agy.log"
+    prompt = (
+        f"{base_prompt.rstrip()}\n\n"
+        "Fan-out response contract: return only the requested structured result. "
+        f"Your assigned worker_id is {worker_id}. Keep the summary concise; "
+        "put bounded conclusions in findings and material unknowns in uncertainties."
+    )
+    agy_timeout = max(1, int(timeout_seconds) - 1)
+    command = [
+        agy_path,
+        "--model",
+        model,
+        "--mode",
+        "plan",
+        "--sandbox",
+        "--output-format",
+        "json",
+        "--json-schema",
+        str(SCHEMA_PATH),
+        "--print-timeout",
+        f"{agy_timeout}s",
+        "--log-file",
+        str(log_path),
+        f"--print={prompt}",
+    ]
+
+    started = time.monotonic()
+    async with semaphore:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            cwd=working_directory,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
+        )
+        communicate = asyncio.create_task(process.communicate())
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                asyncio.shield(communicate), timeout=timeout_seconds
+            )
+        except TimeoutError:
+            await terminate_process_group(process)
+            stdout, stderr = await communicate
+            write_private(stdout_path, stdout)
+            write_private(stderr_path, stderr)
+            if log_path.exists():
+                log_path.chmod(0o600)
+            return {
+                "attempt": attempt,
+                "status": "timeout",
+                "elapsed_seconds": round(time.monotonic() - started, 3),
+                "stdout_path": str(stdout_path.relative_to(output)),
+                "stderr_path": str(stderr_path.relative_to(output)),
+                "log_path": str(log_path.relative_to(output)),
+            }
+        except asyncio.CancelledError:
+            await terminate_process_group(process)
+            await communicate
+            raise
+
+    write_private(stdout_path, stdout)
+    write_private(stderr_path, stderr)
+    if log_path.exists():
+        log_path.chmod(0o600)
+    record: dict[str, Any] = {
+        "attempt": attempt,
+        "returncode": process.returncode,
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+        "stdout_path": str(stdout_path.relative_to(output)),
+        "stderr_path": str(stderr_path.relative_to(output)),
+        "log_path": str(log_path.relative_to(output)),
+    }
+    if process.returncode != 0:
+        record["status"] = "nonzero_exit"
+        return record
+    if len(stdout) > max_output_bytes or len(stderr) > max_output_bytes:
+        record["status"] = "oversized_output"
+        return record
+
+    try:
+        envelope = json.loads(stdout)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        record["status"] = "malformed_output"
+        return record
+    if not isinstance(envelope, dict) or envelope.get("status") != "SUCCESS":
+        record["status"] = "invalid_result"
+        return record
+
+    result = envelope.get("structured_output")
+    error = validate_agy_result(result, worker_id)
+    if error is not None:
+        record["status"] = "invalid_result"
+        record["error"] = error
+        return record
+
+    record.update(
+        {
+            "status": "ok",
+            "result": result,
+            "agy_duration_seconds": envelope.get("duration_seconds"),
+            "agy_num_turns": envelope.get("num_turns"),
+            "usage": envelope.get("usage"),
+        }
+    )
+    return record
+
+
+async def run_agy_worker(
+    *,
+    index: int,
+    semaphore: asyncio.Semaphore,
+    agy_path: str,
+    model: str,
+    base_prompt: str,
+    working_directory: Path,
+    output: Path,
+    timeout_seconds: float,
+    max_output_bytes: int,
+    retries: int,
+) -> dict[str, Any]:
+    worker_id = f"worker-{index:04d}"
+    attempts: list[dict[str, Any]] = []
+    for attempt in range(1, retries + 2):
+        record = await run_agy_attempt(
+            worker_id=worker_id,
+            attempt=attempt,
+            semaphore=semaphore,
+            agy_path=agy_path,
+            model=model,
+            base_prompt=base_prompt,
+            working_directory=working_directory,
+            output=output,
+            timeout_seconds=timeout_seconds,
+            max_output_bytes=max_output_bytes,
+        )
+        attempts.append(record)
+        if record["status"] not in {"timeout", "nonzero_exit"}:
+            break
+
+    final = attempts[-1]
+    return {
+        "worker_id": worker_id,
+        "status": final["status"],
+        "attempt_count": len(attempts),
+        "attempts": attempts,
+        **({"result": final["result"]} if "result" in final else {}),
+    }
+
+
+def parse_opencode_output(
+    stdout: bytes, worker_id: str
+) -> tuple[dict[str, Any] | None, Any, str | None]:
+    try:
+        envelope = json.loads(stdout)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        return None, None, str(error)
+    if not isinstance(envelope, dict) or envelope.get("status") != "SUCCESS":
+        detail = envelope.get("error") if isinstance(envelope, dict) else None
+        if detail is None:
+            return None, None, "OpenCode helper did not return a successful envelope"
+        return None, None, f"OpenCode structured output failed: {json.dumps(detail)}"
+    result, validation_error = validate_opencode_receipt(
+        envelope.get("structured_output"), worker_id
+    )
+    if validation_error is not None:
+        return None, None, validation_error
+    return result, envelope.get("usage"), None
+
+
+async def run_opencode_worker(
+    *,
+    index: int,
+    semaphore: asyncio.Semaphore,
+    opencode_path: str,
+    node_path: str,
+    sdk_path: Path,
+    model: str,
+    agent: str,
+    base_prompt: str,
+    working_directory: Path,
+    output: Path,
+    timeout_seconds: float,
+    max_output_bytes: int,
+) -> dict[str, Any]:
+    worker_id = f"worker-{index:04d}"
+    worker_dir = output / worker_id
+    worker_dir.mkdir(mode=0o700, exist_ok=True)
+    worker_dir.chmod(0o700)
+    stdout_path = worker_dir / "stdout.json"
+    stderr_path = worker_dir / "stderr.log"
+    command = [
+        node_path,
+        str(OPENCODE_HELPER_PATH),
+        "--sdk",
+        str(sdk_path),
+        "--directory",
+        str(working_directory),
+        "--port",
+        str(available_tcp_port()),
+        "--model",
+        model,
+        "--agent",
+        agent,
+        "--worker-id",
+        worker_id,
+        "--prompt",
+        base_prompt,
+    ]
+    environment = os.environ.copy()
+    opencode_directory = str(Path(opencode_path).resolve().parent)
+    environment["PATH"] = opencode_directory + os.pathsep + environment.get("PATH", "")
+    started = time.monotonic()
+    async with semaphore:
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            cwd=working_directory,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=environment,
+            start_new_session=True,
+        )
+        communicate = asyncio.create_task(process.communicate())
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                asyncio.shield(communicate), timeout=timeout_seconds
+            )
+        except TimeoutError:
+            await terminate_process_group(process)
+            stdout, stderr = await communicate
+            write_private(stdout_path, stdout)
+            write_private(stderr_path, stderr)
+            attempt = {
+                "attempt": 1,
+                "status": "timeout",
+                "elapsed_seconds": round(time.monotonic() - started, 3),
+                "stdout_path": str(stdout_path.relative_to(output)),
+                "stderr_path": str(stderr_path.relative_to(output)),
+            }
+            return {
+                "worker_id": worker_id,
+                "status": "timeout",
+                "attempt_count": 1,
+                "attempts": [attempt],
+            }
+        except asyncio.CancelledError:
+            await terminate_process_group(process)
+            await communicate
+            raise
+
+    write_private(stdout_path, stdout)
+    write_private(stderr_path, stderr)
+    attempt = {
+        "attempt": 1,
+        "returncode": process.returncode,
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+        "stdout_path": str(stdout_path.relative_to(output)),
+        "stderr_path": str(stderr_path.relative_to(output)),
+    }
+    if process.returncode != 0:
+        attempt["status"] = "nonzero_exit"
+    elif len(stdout) > max_output_bytes or len(stderr) > max_output_bytes:
+        attempt["status"] = "oversized_output"
+    else:
+        result, usage, error = parse_opencode_output(stdout, worker_id)
+        if error is not None:
+            attempt["status"] = "invalid_result"
+            attempt["error"] = error
+        else:
+            attempt["status"] = (
+                "ok" if result["outcome"] == "completed" else result["outcome"]
+            )
+            attempt["result"] = result
+            attempt["usage"] = usage
+
+    worker = {
+        "worker_id": worker_id,
+        "status": attempt["status"],
+        "attempt_count": 1,
+        "attempts": [attempt],
+    }
+    if "result" in attempt:
+        worker["result"] = attempt["result"]
+    return worker
+
+
+async def run(args: argparse.Namespace) -> int:
+    (
+        executable_path,
+        node_path,
+        sdk_path,
+        prompt_path,
+        working_directory,
+        output,
+    ) = validate_args(args)
+    output.mkdir(parents=True, exist_ok=True, mode=0o700)
+    output.chmod(0o700)
+    prompt_bytes = prompt_path.read_bytes()
+    prompt_sha256 = hashlib.sha256(prompt_bytes).hexdigest()
+    base_prompt = prompt_bytes.decode("utf-8")
+    semaphore = asyncio.Semaphore(args.concurrency)
+    started = time.monotonic()
+
+    if args.harness == "agy":
+        workers = [
+            run_agy_worker(
+                index=index,
+                semaphore=semaphore,
+                agy_path=executable_path,
+                model=args.model,
+                base_prompt=base_prompt,
+                working_directory=working_directory,
+                output=output,
+                timeout_seconds=args.timeout_seconds,
+                max_output_bytes=args.max_output_bytes,
+                retries=args.agy_retries,
+            )
+            for index in range(1, args.workers + 1)
+        ]
+    else:
+        assert node_path is not None
+        assert sdk_path is not None
+        workers = [
+            run_opencode_worker(
+                index=index,
+                semaphore=semaphore,
+                opencode_path=executable_path,
+                node_path=node_path,
+                sdk_path=sdk_path,
+                model=args.model,
+                agent=args.agent,
+                base_prompt=base_prompt,
+                working_directory=working_directory,
+                output=output,
+                timeout_seconds=args.timeout_seconds,
+                max_output_bytes=args.max_output_bytes,
+            )
+            for index in range(1, args.workers + 1)
+        ]
+
+    loop = asyncio.get_running_loop()
+    main_task = asyncio.current_task()
+
+    def _handle_sigterm() -> None:
+        if main_task and not main_task.done():
+            main_task.cancel()
+
+    try:
+        loop.add_signal_handler(signal.SIGTERM, _handle_sigterm)
+    except (NotImplementedError, RuntimeError):
+        pass
+
+    try:
+        results = await asyncio.gather(*workers)
+    finally:
+        try:
+            loop.remove_signal_handler(signal.SIGTERM)
+        except (NotImplementedError, RuntimeError):
+            pass
+
+    valid_results = sum(result["status"] == "ok" for result in results)
+
+    total_tokens: int | None = None
+    total_cost_usd: float | None = None
+
+    for worker in results:
+        for attempt in worker.get("attempts", []):
+            usage = attempt.get("usage")
+            tok = extract_tokens(usage)
+            if tok is not None:
+                total_tokens = (total_tokens or 0) + tok
+            cst = extract_cost(usage)
+            if cst is not None:
+                total_cost_usd = (total_cost_usd or 0.0) + cst
+
+    if total_cost_usd is not None:
+        total_cost_usd = round(total_cost_usd, 6)
+
+    packet = {
+        "schema_version": 3,
+        "harness": args.harness,
+        "model": args.model,
+        "agent": args.agent if args.harness == "opencode" else None,
+        "prompt_path": str(prompt_path),
+        "prompt_sha256": prompt_sha256,
+        "requested_workers": args.workers,
+        "concurrency": args.concurrency,
+        "timeout_seconds": args.timeout_seconds,
+        "agy_retries": args.agy_retries if args.harness == "agy" else 0,
+        "total_retries": sum(result["attempt_count"] - 1 for result in results),
+        "min_results": args.min_results,
+        "valid_results": valid_results,
+        "total_tokens": total_tokens,
+        "total_cost_usd": total_cost_usd,
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+        "workers": results,
+    }
+    packet_path = output / "packet.json"
+    temp_packet_path = output / f"packet.json.tmp.{os.getpid()}"
+    temp_packet_path.write_text(
+        json.dumps(packet, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    temp_packet_path.chmod(0o600)
+    os.replace(temp_packet_path, packet_path)
+
+    summary: dict[str, Any] = {
+        "status": "ok" if valid_results >= args.min_results else "insufficient_results",
+        "valid_results": valid_results,
+        "requested_workers": args.workers,
+        "packet_path": str(packet_path),
+    }
+    if total_tokens is not None:
+        summary["total_tokens"] = total_tokens
+    if total_cost_usd is not None:
+        summary["total_cost_usd"] = total_cost_usd
+    print(json.dumps(summary, sort_keys=True))
+    return 0 if valid_results >= args.min_results else 1
+
+
+def main() -> int:
+    try:
+        return asyncio.run(run(parse_args()))
+    except (OSError, UnicodeError, ValueError) as error:
+        print(f"fanout: {error}", file=sys.stderr)
+        return 2
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

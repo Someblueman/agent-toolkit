@@ -1,0 +1,4 @@
+interface:
+  display_name: "Python Engineering"
+  short_description: "Idiomatic Python 3.10+ review, design, and optimization"
+  default_prompt: "Use $python-engineering for idiomatic Python 3.10+ implementation, refactoring, async/concurrency, or performance optimization. Apply only the guidance relevant to this repository and task."

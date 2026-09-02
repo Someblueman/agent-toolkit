@@ -1,0 +1,4 @@
+interface:
+  display_name: "Go Engineering"
+  short_description: "Idiomatic Go architecture, concurrency, and optimization"
+  default_prompt: "Use $go-engineering for idiomatic Go implementation, refactoring, package architecture, concurrency, or performance optimization. Apply only the guidance relevant to this repository and task."

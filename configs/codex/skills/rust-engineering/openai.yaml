@@ -1,0 +1,4 @@
+interface:
+  display_name: "Rust Engineering"
+  short_description: "Idiomatic Rust review, design, and optimization"
+  default_prompt: "Use $rust-engineering for a focused Rust implementation or review. Apply only the guidance relevant to this repository and task."

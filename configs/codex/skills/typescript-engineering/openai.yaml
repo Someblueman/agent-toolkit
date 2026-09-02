@@ -1,0 +1,4 @@
+interface:
+  display_name: "TypeScript Engineering"
+  short_description: "Correct TypeScript across type and runtime boundaries"
+  default_prompt: "Use $typescript-engineering to implement or review this TypeScript change against the repository's runtime, contracts, and verification path."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Shell Engineering"
+  short_description: "Pragmatic Bash and POSIX shell engineering and testing"
+  default_prompt: "Use $shell-engineering for robust shell scripting, strict error handling, POSIX portability, and pipeline automation. Apply only the guidance relevant to this repository and task."

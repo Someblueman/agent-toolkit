@@ -1,0 +1,4 @@
+interface:
+  display_name: "Haskell Engineering"
+  short_description: "Engineer correct, law-aware Haskell"
+  default_prompt: "Use $haskell to implement or review Haskell with explicit invariants, algebraic laws, evaluation and effect semantics, and repository-native verification."

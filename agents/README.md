@@ -17,3 +17,7 @@ Vendors wire these profiles into their native format under `configs/<vendor>/`.
 - [codex/](codex/) — placeholder for an OpenAI Codex-style profile.
 - [claude-code/](claude-code/) — placeholder for a Claude Code-style profile.
 - [pi/](pi/) — placeholder for a Pi-style profile.
+
+## Shared policy
+
+- [global-policy.md](global-policy.md) — cross-agent engineering principles (anti-bloat, scope discipline, subagent restraint, …). Each vendor's adapter is responsible for installing it at the location that agent reads at session start.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "C Systems Engineering"
+  short_description: "Idiomatic C review, memory safety, arenas, and atomics"
+  default_prompt: "Use $c-engineering for focused C implementation, memory management, debugging, or optimization. Apply only the guidance relevant to this repository and task."
