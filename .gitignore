@@ -30,3 +30,8 @@ build/
 
 # OMP lock file, written next to the resolved config path
 configs/omp/config.yml.lock
+
+# Skill-eval raw run data: per-run JSON includes model stdout/stderr tails
+# (transcripts) — never committed. Batch metadata (samples, models, runner
+# versions) is carried in evals/REPORT.md.
+evals/results/
