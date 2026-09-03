@@ -9,7 +9,7 @@ The source of truth lives in the top-level directories (`skills/`, `hooks/`, `ag
 ## Existing configs
 
 - [codex/](codex/) — OpenAI Codex adapter (TOML/JSON files Codex expects).
-- [omp/](omp/) — Oh My Pi adapter (symlink-based; see its README for the link map).
+- [omp/](omp/) — Oh My Pi adapter (skills/agents symlinked, config copied; see its README for why).
 
 ## Adding a new agent adapter
 

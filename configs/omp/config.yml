@@ -66,3 +66,6 @@ memory:
 autolearn:
   enabled: true
   autoContinue: false
+
+# Added by OMP (v18+); keep so it does not rewrite the file on next run.
+setupVersion: 2

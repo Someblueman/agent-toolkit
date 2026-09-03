@@ -26,4 +26,7 @@ build/
 # Secrets / env
 .env
 .env.*
-!.env.example
+!.env.example.omp/
+
+# OMP lock file, written next to the resolved config path
+configs/omp/config.yml.lock

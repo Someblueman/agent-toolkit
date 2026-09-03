@@ -3,7 +3,7 @@
 #
 # Usage: install.sh <agent> [--force] [--dry-run] [--prune]
 #
-# Agents supported: codex (copy-based), omp (symlink-based).
+# Agents supported: codex (copy-based), omp (skills/agents symlinked, config copied).
 #
 # Behavior:
 #   - Each shared skill is materialized as a real directory at
@@ -29,7 +29,7 @@ Usage: $0 <agent> [--force] [--dry-run] [--prune]
 
 Agents:
   codex    Install into ~/.codex/
-  omp      Symlink toolkit into ~/.omp/agent/ (repo stays source of truth)
+  omp      Symlink skills/agents into ~/.omp/agent/, copy config.yml
 
 Options:
   --force    Replace existing files/dirs that differ from the repo (default: warn and skip).
@@ -227,15 +227,17 @@ install_codex() {
   fi
 }
 
-# install_omp - symlink the toolkit into ~/.omp/agent so this repo remains the
-# source of truth. Existing real files are moved aside to <name>.bak.pre-toolkit
-# before linking; existing correct symlinks are left untouched.
+# install_omp - wire the toolkit into ~/.omp/agent. skills/ and agents/ are
+# symlinked so the repo stays the source of truth for read-only content.
+# config.yml is copied, not linked: OMP owns its config at runtime — it
+# normalizes and rewrites the file whenever settings persist, and locks it
+# with a sibling config.yml.lock next to the resolved path. A symlink would
+# route those writes into the repo copy, clobbering it.
 install_omp() {
   local agent_dir="${OMP_AGENT_DIR:-$HOME/.omp/agent}"
   log "installing into $agent_dir (repo: $REPO_ROOT)"
 
   local link_targets=(
-    "config.yml:$REPO_ROOT/configs/omp/config.yml"
     "skills:$REPO_ROOT/skills"
     "agents:$REPO_ROOT/agents"
   )
@@ -270,6 +272,13 @@ install_omp() {
     run "ln -s '$target' '$dst'"
     log "linked: $dst -> $target"
   done
+  # Migrate a pre-existing config symlink: the live file is now copy-based.
+  local cfg_dst="$agent_dir/config.yml"
+  if [[ -L "$cfg_dst" ]]; then
+    warn "removing config symlink at $cfg_dst (config is copy-based now)"
+    run "rm '$cfg_dst'"
+  fi
+  sync_file "$REPO_ROOT/configs/omp/config.yml" "$cfg_dst"
 }
 
 case "$AGENT" in
