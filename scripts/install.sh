@@ -3,7 +3,7 @@
 #
 # Usage: install.sh <agent> [--force] [--dry-run] [--prune]
 #
-# Agents supported: codex
+# Agents supported: codex (copy-based), omp (symlink-based).
 #
 # Behavior:
 #   - Each shared skill is materialized as a real directory at
@@ -29,6 +29,7 @@ Usage: $0 <agent> [--force] [--dry-run] [--prune]
 
 Agents:
   codex    Install into ~/.codex/
+  omp      Symlink toolkit into ~/.omp/agent/ (repo stays source of truth)
 
 Options:
   --force    Replace existing files/dirs that differ from the repo (default: warn and skip).
@@ -226,9 +227,55 @@ install_codex() {
   fi
 }
 
+# install_omp - symlink the toolkit into ~/.omp/agent so this repo remains the
+# source of truth. Existing real files are moved aside to <name>.bak.pre-toolkit
+# before linking; existing correct symlinks are left untouched.
+install_omp() {
+  local agent_dir="${OMP_AGENT_DIR:-$HOME/.omp/agent}"
+  log "installing into $agent_dir (repo: $REPO_ROOT)"
+
+  local link_targets=(
+    "config.yml:$REPO_ROOT/configs/omp/config.yml"
+    "skills:$REPO_ROOT/skills"
+    "agents:$REPO_ROOT/agents"
+  )
+  for entry in "${link_targets[@]}"; do
+    local name="${entry%%:*}"
+    local target="${entry#*:}"
+    local dst="$agent_dir/$name"
+
+    if [[ -L "$dst" ]]; then
+      local cur
+      cur=$(readlink "$dst")
+      if [[ "$cur" == "$target" ]]; then
+        log "ok (linked): $dst -> $target"
+      else
+        warn "symlink at $dst points to $cur, replacing"
+        run "ln -sfn '$target' '$dst'"
+      fi
+      continue
+    fi
+
+    if [[ -e "$dst" ]]; then
+      local backup="$dst.bak.pre-toolkit"
+      if [[ $FORCE -ne 1 && $DRY_RUN -ne 1 && -e "$backup" ]]; then
+        err "backup already exists: $backup (remove it or pass --force)"
+        return 1
+      fi
+      warn "backing up existing $name to $(basename "$backup")"
+      run "mv '$dst' '$backup'"
+    fi
+
+    run "mkdir -p '$agent_dir'"
+    run "ln -s '$target' '$dst'"
+    log "linked: $dst -> $target"
+  done
+}
+
 case "$AGENT" in
   codex) install_codex ;;
-  *) err "unsupported agent: $AGENT (supported: codex)"; usage; exit 1 ;;
+  omp) install_omp ;;
+  *) err "unsupported agent: $AGENT (supported: codex, omp)"; usage; exit 1 ;;
 esac
 
 log "done."
