@@ -1,0 +1,9 @@
+# Rollup manifest
+# One service per line: <service name> TAB <probe command>
+# Blank lines and lines starting with '#' are ignored.
+# Service names may contain spaces. Probe commands are resolved relative to
+# the directory rollup.sh is run from.
+
+api-gateway	fixtures/mock_probe.sh ok-marker
+queue-worker	fixtures/mock_probe.sh ok-empty
+legacy-billing	fixtures/mock_probe.sh fail-exit-3

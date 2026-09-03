@@ -1,0 +1,37 @@
+{
+  "batch": "20260903T020643_3aa5",
+  "series": "v0",
+  "models": {
+    "codex": "gpt-5.6-sol",
+    "opencode": "opencode/big-pickle",
+    "omp": "openai-codex/gpt-5.6-sol"
+  },
+  "runner_versions": {
+    "codex": "codex-cli 0.149.1",
+    "opencode": "1.18.27",
+    "omp": "omp/18.1.4"
+  },
+  "task_skills": {
+    "py-async-endpoint": "python-engineering",
+    "tax-refactor": "pragmatic-engineering",
+    "hot-path-optimize": "hardware-aware-optimization"
+  },
+  "models_note": "backfilled: batch predates model pinning; runner defaults resolved to these same ids",
+  "reconstruction_note": "RECONSTRUCTED STUB: original manifest destroyed on 2026-09-03 by an over-broad cleanup (rm -rf evals/results/2026*). Rebuilt from the archived REPORT-v0-calibration.md header and session transcript evidence; per-run raw records are NOT recoverable.",
+  "tasks": [
+    "tax-refactor"
+  ],
+  "samples": 5,
+  "arms": [
+    "with",
+    "without"
+  ],
+  "concurrency": 6,
+  "fingerprints": {
+    "tax-refactor": "ef409b5e9e15d9db"
+  },
+  "harness": "v0-defaults-unpinned",
+  "harness_note": "protocol: model defaults (unpinned), copied OpenCode config",
+  "valid_runs": 30,
+  "invalid_runs": 0
+}

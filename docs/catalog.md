@@ -15,6 +15,7 @@ The index of everything shippable in this toolkit. Updated when skills, hooks, a
 | [profiling-software-performance](../skills/profiling-software-performance/) | Noise-controlled benchmarking and profiling for systems, managed, and lazy runtimes. | draft |
 | [haskell](../skills/haskell/) | Haskell implementation, type-driven design, and review. | stable |
 | [pragmatic-engineering](../skills/pragmatic-engineering/) | Cross-language engineering principles and the `check_anti_bloat.py` enforcement script. | stable |
+| [skill-eval-runner](../skills/skill-eval-runner/) | Run deterministic skill-effectiveness evals (with/without A/B across codex, opencode, omp), calibrate sample sizes, produce batch-scoped reports. | draft |
 | [python-engineering](../skills/python-engineering/) | Idiomatic Python implementation, review, testing, and packaging. | stable |
 | [rust-engineering](../skills/rust-engineering/) | Idiomatic Rust implementation, review, and tooling. | stable |
 | [shell-engineering](../skills/shell-engineering/) | Shell scripting best practices, safety, and portability. | stable |
