@@ -9,7 +9,7 @@ Deliver the smallest, most direct, and fully verified change that satisfies the 
 
 ## Core Axioms
 
-1. **Clean Replacement over Compatibility**: Default to updating callers in place. Never write compatibility shims, dual decoders, or forwarding functions unless explicitly commanded by the user.
+1. **Clean Replacement over Compatibility**: Default to updating callers in place. Never write compatibility shims, dual decoders, or forwarding functions unless explicitly commanded by the user. When a superseded helper (public or private) is replaced, DELETE it and reroute its callers to the canonical implementation in the same diff — preserving a public name means rewriting its body to call the canonical path, never keeping the old function as a wrapper.
 2. **Concrete over Speculative**: Write direct, concrete implementations. Never invent generic traits, interfaces, abstract classes, or builder patterns for single use cases.
 3. **Calibrated Verification over Test Sprawl**: Write the minimum sufficient test coverage to verify the specific requirement. Run fast, targeted tests for localized changes (Tier 1) and reserve full acceptance suites for critical architectural changes (Tier 2).
 4. **Action over Ceremony**: Cap pre-flight file reads to 3-5 files. Avoid repetitive status checks and jump straight from entry point identification to implementation.

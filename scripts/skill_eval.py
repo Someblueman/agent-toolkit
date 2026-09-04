@@ -1,407 +1,368 @@
 #!/usr/bin/env python3
-"""skill-eval: deterministic A/B measurement of skill effectiveness.
+"""Native, paired evaluation of repository skills across agent harnesses."""
 
-For each (task, runner, arm):
-  1. Fresh workspace = task scaffold.
-  2. Prompt = task.md, prepended with the task's SKILL.md for the "with" arm.
-  3. Runner CLI executes headless in an ISOLATED config home (no skills, no
-     user config) so the "without" arm cannot auto-load shared skills.
-  4. The hidden verifier scores the workspace mechanically; it never enters
-     the agent-visible workspace.
-
-Every `run` invocation is a BATCH with an id + manifest (models, runner
-versions). Reports are built from explicit batches (default: latest batch
-per task), never a pool of mixed batches within one task's arms. Runs that
-fail for infrastructure reasons (runner/auth/timeout, isolation leak, no
-verify output) are excluded from scoring and reported separately.
-
-Commands:
-  run    [--tasks t1,t2] [--runners codex,opencode,omp]
-         [--arms with,without] [--samples N] [--concurrency K] [--batch ID]
-  probe                model-level isolation check (once per runner/session)
-  report [--batch a,b] rebuild evals/REPORT.md (default: latest per task)
-"""
 from __future__ import annotations
 
 import argparse
 import json
-import os
+import random
 import shutil
-import subprocess
-import sys
 import tempfile
-import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
+
+from skill_eval_contract import (
+    SuiteSpec,
+    TaskSpec,
+    directory_fingerprint,
+    load_suite,
+    package_matches,
+    runtime_fingerprint,
+    skill_fingerprint,
+    task_fingerprint,
+)
+from skill_eval_runners import (
+    build_command,
+    detect_activation,
+    inspect_runtime,
+    prepare_runner,
+    run_agent,
+    runner_version,
+)
+from skill_eval_telemetry import trace_metrics, workspace_metrics
+from skill_eval_validation import classify_run, validate_task, verify_workspace
 
 REPO = Path(__file__).resolve().parent.parent
 EVALS = REPO / "evals"
 RESULTS = EVALS / "results"
-RUN_TIMEOUT = 900
-
-# task-id -> (skill dir name, metric name or None, lower_is_better)
-TASKS = {
-    # v1 series - discriminating tasks (v0 tasks py-async-endpoint,
-    # tax-refactor, hot-path-optimize are retired: saturated both arms;
-    # see evals/archive/REPORT-v0-calibration.md)
-    "msg-clean-cutover": ("pragmatic-engineering", None, True),
-    "event-sink-concrete": ("pragmatic-engineering", "banned_token_count", True),
-    "sh-rollup-probe": ("shell-engineering", None, True),
-    "fanout-cancel-batch": ("python-engineering", "wall_time_s", True),
-    "regex-recompile-per-row": ("profiling-software-performance", "speedup", False),
-    "soa-layout-rewrite": ("hardware-aware-optimization", "speedup", False),
-    "go-error-chain": ("go-engineering", None, True),
-}
-RUNNERS = ("codex", "opencode", "omp")
-# Pinned models (resolved, not runner defaults) so model drift cannot be
-# attributed to skill effects. Persisted in each batch manifest.
-MODELS = {"codex": "gpt-5.6-sol", "opencode": "opencode/big-pickle",
-          "omp": "openai-codex/gpt-5.6-sol"}
-
-
-def task_fingerprint(task: str) -> str:
-    """Content fingerprint of everything that defines a task's measurement:
-    the mapped skill's SKILL.md, task.md, verify.py, and the scaffold tree.
-    Any edit to any of these changes the fingerprint and resets report
-    pooling, so pre/post-edit runs can never be mixed."""
-    import hashlib
-    tdir = EVALS / "tasks" / task
-    h = hashlib.sha256()
-    h.update((REPO / "skills" / TASKS[task][0] / "SKILL.md").read_bytes())
-    files = [tdir / "task.md", tdir / "verify.py"]
-    files += sorted(p for p in (tdir / "scaffold").rglob("*") if p.is_file())
-    for f in files:
-        h.update(str(f.relative_to(tdir)).encode())
-        h.update(f.read_bytes())
-    return h.hexdigest()[:16]
-def harness_fingerprint() -> str:
-    """Fingerprint of the run protocol itself (both harness modules).
-
-    Adapter changes (flags, isolation, model pinning) alter measurement
-    conditions even when recorded models/versions match, so batches never
-    pool across harness revisions."""
-    import hashlib
-    h = hashlib.sha256()
-    for f in sorted((REPO / "scripts").glob("skill_eval*.py")):
-        h.update(f.name.encode())
-        h.update(f.read_bytes())
-    return h.hexdigest()[:16]
-
-
-
-
-def log(msg: str):
-    print(f"[skill-eval] {msg}", flush=True)
-
-
+HISTORY = EVALS / "history"
+PROMPT_SUFFIX = (
+    "\n\nWork directly in the current directory. Make the requested change, "
+    "then stop. Do not ask questions.\n"
+)
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def log(message: str) -> None:
+    print(f"[skill-eval] {message}", flush=True)
 
 
-def write_manifest(batch: str, tasks, runners, arms, samples, concurrency) -> None:
-    (RESULTS / batch).mkdir(parents=True, exist_ok=True)
-    (RESULTS / batch / "manifest.json").write_text(json.dumps({
-        "batch": batch, "started_at": utcnow(),
-        "tasks": tasks, "runners": runners, "arms": arms,
-        "samples": samples, "concurrency": concurrency,
-        "runner_versions": {r: runner_version(r) for r in runners},
-        "models": {r: MODELS[r] for r in runners},
-        "task_skills": {t: TASKS[t][0] for t in tasks},
-        "series": "v1",
-        "fingerprints": {t: task_fingerprint(t) for t in tasks},
-        "harness": harness_fingerprint(),
-    }, indent=2))
+def _save_artifacts(
+    artifact_dir: Path, stdout: str, stderr: str, verify_stderr: str,
+    run_dir: Path,
+) -> dict[str, str]:
+    artifact_dir.mkdir(parents=True)
+    (artifact_dir / "stdout.jsonl").write_text(stdout)
+    (artifact_dir / "stderr.log").write_text(stderr)
+    (artifact_dir / "verifier.stderr.log").write_text(verify_stderr)
+    shutil.copytree(run_dir, artifact_dir / "workspace")
+    return {name: str(artifact_dir / target) for name, target in {
+        "stdout": "stdout.jsonl", "stderr": "stderr.log",
+        "verifier_stderr": "verifier.stderr.log", "workspace": "workspace",
+    }.items()}
 
 
-# ---------------------------------------------------------------- isolation
-
-def isolated_codex_home(base: Path) -> Path:
-    """Empty CODEX_HOME: no skills, no AGENTS.md, no config.toml."""
-    home = base / "codex-home"
-    home.mkdir(parents=True)
-    src = Path.home() / ".codex" / "auth.json"
-    if src.exists():
-        shutil.copy2(src, home / "auth.json")
-    return home
-
-
-def isolated_omp_home(base: Path) -> Path:
-    """Fake HOME for omp: ~/.omp without skills, no ~/.codex/AGENTS.md."""
-    home = base / "omp-home"
-    (home / ".omp").mkdir(parents=True)
-    agent = home / ".omp" / "agent"
-    shutil.copytree(Path.home() / ".omp" / "agent", agent,
-                    ignore=shutil.ignore_patterns("skills", "sessions",
-                                                  "history.db*",
-                                                  "terminal-sessions"))
-    (home / ".codex").mkdir()  # exists but empty: no global AGENTS.md
-    return home
-
-
-def isolated_opencode_dirs(base: Path) -> tuple[Path, Path]:
-    """Isolated XDG_CONFIG_HOME / XDG_DATA_HOME (auth copied file-to-file).
-
-    OpenCode resolves its dirs as $XDG_CONFIG_HOME/opencode and
-    $XDG_DATA_HOME/opencode, so files nest under opencode/. It also
-    discovers global skills from ~/.claude/skills, hence the fake HOME.
-    Config stays EMPTY: opencode/* plan models are built-in, and copying
-    the user's opencode.json would reintroduce plugins/agent config.
-    """
-    cfg = base / "oc-config"
-    data = base / "oc-data"
-    (cfg / "opencode").mkdir(parents=True)
-    (data / "opencode").mkdir(parents=True)
-    src = Path.home() / ".local" / "share" / "opencode" / "auth.json"
-    if src.exists():
-        shutil.copy2(src, data / "opencode" / "auth.json")
-    return cfg, data
-
-
-def runner_env(runner: str, base: Path) -> dict:
-    env = os.environ.copy()
-    if runner == "codex":
-        env["CODEX_HOME"] = str(isolated_codex_home(base))
-    elif runner == "opencode":
-        cfg, data = isolated_opencode_dirs(base)
-        env["XDG_CONFIG_HOME"] = str(cfg)
-        env["XDG_DATA_HOME"] = str(data)
-        (base / "oc-home").mkdir()
-        env["HOME"] = str(base / "oc-home")
-    elif runner == "omp":
-        env["HOME"] = str(isolated_omp_home(base))
-    return env
-
-
-def isolation_check(runner: str, base: Path, skill: str) -> dict:
-    """Check that the *target* skill is not discoverable in this run config.
-
-    Existence of runner-generated files (e.g. Codex's own config.toml or
-    built-in skill dirs) is NOT a leak; only the target skill's presence is.
-    """
-    leaks: list[str] = []
-    if runner == "codex":
-        home = base / "codex-home"
-        if (home / "skills" / skill).exists():
-            leaks.append(f"codex-home/skills/{skill}")
-        agents = home / "AGENTS.md"
-        if agents.exists() and skill in agents.read_text(errors="ignore"):
-            leaks.append(str(agents))
-    elif runner == "opencode":
-        cfg = base / "oc-config" / "opencode"
-        for p in (cfg / "skill" / skill, cfg / "skills" / skill,
-                  cfg / "agent", cfg / "command", cfg / "AGENTS.md",
-                  base / "oc-home" / ".claude" / "skills" / skill):
-            if p.exists():
-                leaks.append(str(p))
-    elif runner == "omp":
-        omp_home = base / "omp-home"
-        for p in (omp_home / ".omp" / "agent" / "skills" / skill,
-                  omp_home / ".codex" / "AGENTS.md"):
-            if p.exists():
-                leaks.append(str(p))
-    return {"runner": runner, "skill": skill, "leaks": leaks}
-
-
-# ---------------------------------------------------------------- adapters
-
-def build_cmd(runner: str, run_dir: Path, prompt: str) -> list[str]:
-    """Headless invocation, skills disabled, model pinned via MODELS."""
-    if runner == "codex":
-        return ["codex", "exec", "--skip-git-repo-check", "--ephemeral",
-                "--ignore-user-config", "--ignore-rules",
-                "-C", str(run_dir), "-s", "workspace-write",
-                "-m", MODELS["codex"], "-"]
-    if runner == "opencode":
-        return ["opencode", "run", "--pure", "--auto", "--dir", str(run_dir),
-                "--model", MODELS["opencode"], prompt]
-    if runner == "omp":
-        return ["omp", "-p", "--cwd", str(run_dir), "--no-skills", "--no-rules",
-                "--no-extensions", "--no-lsp", "--no-pty", "--auto-approve",
-                "--no-session", "--max-time", "840",
-                "--model", MODELS["omp"], prompt]
-    raise ValueError(runner)
-
-
-def run_agent(runner: str, run_dir: Path, prompt: str, base: Path) -> dict:
-    argv = build_cmd(runner, run_dir, prompt)
-    t0 = time.monotonic()
-    try:
-        proc = subprocess.run(argv, cwd=str(run_dir), env=runner_env(runner, base),
-                              input=prompt, capture_output=True, text=True,
-                              timeout=RUN_TIMEOUT)
-        ok = proc.returncode == 0
-        err = proc.stderr[-2000:]
-        out = proc.stdout[-1500:]
-    except subprocess.TimeoutExpired:
-        ok, err, out = False, f"timeout after {RUN_TIMEOUT}s", ""
-    return {"runner_ok": ok, "duration_s": round(time.monotonic() - t0, 1),
-            "stderr": err, "stdout_tail": out}
-
-
-# ---------------------------------------------------------------- scoring
-
-def verify(run_dir: Path, verifier: Path) -> dict:
-    """Run the hidden verifier with cwd=workspace; it lives outside it.
-
-    PYTHONPATH includes the workspace so the verifier can import agent-edited
-    modules while the verifier file itself stays invisible to the agent.
-    """
-    try:
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(run_dir) + os.pathsep + env.get("PYTHONPATH", "")
-        proc = subprocess.run([sys.executable, str(verifier)], cwd=str(run_dir),
-                              env=env, capture_output=True, text=True, timeout=300)
-    except subprocess.TimeoutExpired:
-        return {"scored": False, "pass": 0, "metrics": {},
-                "verify_stderr": "verify timeout"}
-    metrics = {}
-    for line in reversed(proc.stdout.splitlines()):
-        if line.startswith("METRICS "):
-            metrics = json.loads(line[len("METRICS "):])
-            break
-    scored = bool(metrics)  # a run is only scored if the verifier emitted data
-    return {"scored": scored, "pass": int(scored and proc.returncode == 0),
-            "metrics": metrics,
-            "verify_stderr": proc.stderr[-1000:] if proc.returncode else ""}
-
-
-def one_run(batch: str, task: str, runner: str, arm: str, i: int,
-            skill_txt: str) -> dict:
-    tdir = EVALS / "tasks" / task
-    with tempfile.TemporaryDirectory(prefix="skilleanon-") as tmp:
-        base = Path(tmp)
+def one_run(
+    *, batch: str, suite: SuiteSpec, task: TaskSpec, runner: str, arm: str,
+    sample: int, pair_id: str, timeout: int, concurrency: int,
+    purpose: str, version: str | None, repo_root: Path, results_root: Path,
+) -> dict:
+    task_dir = repo_root / "evals" / "tasks" / task.id
+    skill_dir = repo_root / "skills" / suite.skill
+    spec = suite.runners[runner]
+    started_at = utcnow()
+    with tempfile.TemporaryDirectory(prefix="skill-eval-") as temporary:
+        base = Path(temporary)
         run_dir = base / "workspace"
-        shutil.copytree(tdir / "scaffold", run_dir)
-        task_md = (tdir / "task.md").read_text()
-        prompt = (f"# Skill instructions\n\n{skill_txt}\n\n# Task\n\n{task_md}"
-                  if arm == "with" else task_md)
-        prompt += ("\n\nWork directly in the current directory. Make the change, "
-                   "then stop. Do not ask questions.\n")
-        result = run_agent(runner, run_dir, prompt, base)
-        result.update(verify(run_dir, tdir / "verify.py"))
-        result["isolation"] = isolation_check(runner, base, TASKS[task][0])
-    # valid = infra worked AND no isolation leak; only valid runs are scored
-    valid = bool(result["runner_ok"] and result["scored"]
-                 and not result["isolation"]["leaks"])
-    rec = {"batch": batch, "task": task, "runner": runner, "arm": arm,
-           "sample": i, "started_at": utcnow(), "valid": valid, **result}
-    out = RESULTS / batch / task / runner / arm
-    out.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-    (out / f"{stamp}_{i:03d}.json").write_text(json.dumps(rec, indent=2))
-    tag = "VALID PASS" if valid and rec["pass"] else \
-          "VALID FAIL" if valid else "INFRA-INVALID"
-    log(f"{task} {runner} {arm} #{i}: {tag} ({rec.get('duration_s')}s)")
-    return rec
+        shutil.copytree(task_dir / "scaffold", run_dir)
+        prepared = prepare_runner(runner, base / "runner", arm, skill_dir, suite.skill)
+        command = build_command(
+            runner, run_dir, timeout, spec.model, spec.thinking,
+            prepared.command_args,
+        )
+        result = run_agent(
+            command, prepared.env, (task_dir / "task.md").read_text() + PROMPT_SUFFIX,
+            timeout,
+        )
+        workspace = workspace_metrics(task_dir / "scaffold", run_dir)
+        verified = verify_workspace(run_dir, task_dir / "verify.py")
+        package_present = prepared.skill_path.is_dir()
+        installed_matches = package_matches(skill_dir, prepared.skill_path)
+        isolation_ok = installed_matches if arm == "with" else not package_present
+        runtime = inspect_runtime(runner, result.stdout, spec.model)
+        trace = trace_metrics(runner, result.stdout)
+        classification = classify_run(
+            started=result.started, exit_code=result.exit_code,
+            budget_exhausted=result.budget_exhausted,
+            verifier_scored=verified["scored"], isolation_ok=isolation_ok,
+            runtime_identity_ok=runtime.identity_ok,
+            provider_error=runtime.provider_error, stderr=result.stderr,
+        )
+        artifact_dir = (
+            results_root / batch / "artifacts" / task.id / runner / arm
+            / f"{sample:03d}"
+        )
+        artifacts = _save_artifacts(
+            artifact_dir, result.stdout, result.stderr, verified["stderr"], run_dir
+        )
+        command_record = [
+            token.replace(str(run_dir), "$WORKSPACE").replace(str(base), "$RUN_ROOT")
+            for token in command
+        ]
+        installed_hash = (
+            directory_fingerprint(prepared.skill_path) if package_present else None
+        )
+    record = {
+        "schema_version": 2, "batch": batch, "series": suite.series,
+        "purpose": purpose, "skill": suite.skill, "task": task.id,
+        "task_family": task.family, "runner": runner, "runner_version": version,
+        "model": spec.model,
+        "thinking": spec.thinking, "arm": arm, "sample": sample,
+        "pair_id": pair_id, "started_at": started_at, "finished_at": utcnow(),
+        "task_fingerprint": task_fingerprint(task, repo_root),
+        "skill_fingerprint": skill_fingerprint(suite.skill, repo_root),
+        "runtime_fingerprint": runtime_fingerprint(
+            runner, version, suite, timeout, concurrency, repo_root
+        ),
+        "command": command_record, "environment": prepared.env_contract,
+        "skill_available": package_present,
+        "skill_package_matches": installed_matches if arm == "with" else None,
+        "installed_package_fingerprint": installed_hash,
+        "activation": detect_activation(runner, result.stdout, suite.skill),
+        "actual_model": runtime.actual_model,
+        "observed_models": list(runtime.observed_models),
+        "model_fallback_applied": runtime.fallback_applied,
+        "runtime_identity_ok": runtime.identity_ok,
+        "provider_error": runtime.provider_error,
+        "input_tokens": runtime.input_tokens,
+        "output_tokens": runtime.output_tokens,
+        "cached_input_tokens": runtime.cached_input_tokens,
+        "total_tokens": runtime.total_tokens,
+        "cost_usd": runtime.cost_usd,
+        **trace,
+        **workspace,
+        "task_started": runtime.task_started,
+        "runner_started": result.started, "runner_exit_code": result.exit_code,
+        "budget_exhausted": result.budget_exhausted,
+        "duration_s": result.duration_s, "valid": classification.valid,
+        "invalid_class": classification.invalid_class,
+        "invalid_reason": classification.reason, "score": verified["score"],
+        "quality_score": verified["quality_score"], "pass": verified["pass"],
+        "metrics": verified["metrics"],
+        "ceiling_threshold": suite.ceiling_threshold,
+        "quality_effect": suite.quality_effect,
+        "efficiency_effect": suite.efficiency_effect,
+        "instability_threshold": suite.instability_threshold,
+        "artifacts": artifacts,
+    }
+    record_path = (
+        results_root / batch / "records" / task.id / runner / arm
+        / f"{sample:03d}.json"
+    )
+    record_path.parent.mkdir(parents=True, exist_ok=True)
+    record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    label = "VALID" if record["valid"] else f"INVALID:{record['invalid_class']}"
+    log(f"{pair_id} {arm}: {label}, score={record['score']}")
+    return record
 
 
-def skill_text(skill: str) -> str:
-    return (REPO / "skills" / skill / "SKILL.md").read_text()
-
-
-def runner_version(runner: str) -> str | None:
-    argv = {"codex": ["codex", "--version"],
-            "opencode": ["opencode", "--version"],
-            "omp": ["omp", "--version"]}[runner]
+def _manifest(
+    suite: SuiteSpec, tasks: tuple[TaskSpec, ...], runners: tuple[str, ...],
+    samples: int, concurrency: int, batch: str, timeout: int, purpose: str,
+    arms: tuple[str, ...], versions: dict[str, str | None], repo_root: Path,
+) -> dict:
     try:
-        return subprocess.run(argv, capture_output=True, text=True,
-                              timeout=30).stdout.strip()
-    except Exception:
-        return None
+        suite_path = str(suite.source_path.relative_to(repo_root))
+    except ValueError:
+        suite_path = suite.source_path.name
+    return {
+        "schema_version": 2, "batch": batch, "series": suite.series,
+        "purpose": purpose, "started_at": utcnow(), "suite": suite_path,
+        "skill": suite.skill, "calibration_basis": suite.calibration_basis,
+        "screen_samples": suite.screen_samples,
+        "thresholds": {
+            "ceiling": suite.ceiling_threshold,
+            "quality_effect": suite.quality_effect,
+            "efficiency_effect": suite.efficiency_effect,
+            "instability": suite.instability_threshold,
+        },
+        "samples_per_arm": samples, "concurrency": concurrency,
+        "timeout_seconds": timeout, "arms": list(arms),
+        "tasks": [asdict(task) for task in tasks],
+        "runners": {
+            name: {**asdict(suite.runners[name]), "version": versions[name]}
+            for name in runners
+        },
+        "fingerprints": {
+            "skill": skill_fingerprint(suite.skill, repo_root),
+            "tasks": {task.id: task_fingerprint(task, repo_root) for task in tasks},
+            "runtimes": {name: runtime_fingerprint(
+                name, versions[name], suite, timeout, concurrency, repo_root
+            ) for name in runners},
+        },
+    }
 
 
+def _sanitized_record(record: dict, results_root: Path) -> dict:
+    clean = dict(record)
+    clean.pop("provider_error", None)
+    clean["artifacts"] = {
+        name: str(Path(path).relative_to(results_root))
+        for name, path in record.get("artifacts", {}).items()
+    }
+    return clean
 
 
-def run_batch(tasks, runners, arms, samples, concurrency, batch) -> list[dict]:
-    write_manifest(batch, tasks, runners, arms, samples, concurrency)
-    jobs = [(t, r, a, i) for t in tasks for r in runners for a in arms
-            for i in range(1, samples + 1)]
-    recs = []
+def _write_history(
+    manifest: dict, records: list[dict], repo_root: Path, results_root: Path,
+) -> None:
+    target = repo_root / "evals" / "history" / manifest["batch"]
+    target.mkdir(parents=True, exist_ok=False)
+    (target / "manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    )
+    lines = [json.dumps(_sanitized_record(record, results_root), sort_keys=True)
+             for record in records]
+    (target / "runs.jsonl").write_text("\n".join(lines) + "\n")
+
+
+def run_batch(
+    *, suite: SuiteSpec, tasks: tuple[TaskSpec, ...], runners: tuple[str, ...],
+    samples: int, concurrency: int, batch: str, timeout: int,
+    repo_root: Path = REPO, results_root: Path = RESULTS,
+    purpose: str = "confirmatory",
+    arms: tuple[str, ...] = ("with", "without"),
+) -> list[dict]:
+    """Run randomized adjacent arm pairs and return every completed record."""
+    batch_dir = results_root / batch
+    batch_dir.mkdir(parents=True, exist_ok=False)
+    versions = {name: runner_version(name) for name in runners}
+    manifest = _manifest(
+        suite, tasks, runners, samples, concurrency, batch, timeout, purpose,
+        arms, versions, repo_root
+    )
+    (batch_dir / "manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    )
+    blocks = [(task, runner, sample) for task in tasks for runner in runners
+              for sample in range(1, samples + 1)]
+
+    def run_pair(task: TaskSpec, runner: str, sample: int) -> list[dict]:
+        pair_id = f"{task.id}:{runner}:{sample:03d}"
+        ordered_arms = list(arms)
+        random.Random(f"{batch}:{pair_id}").shuffle(ordered_arms)
+        return [one_run(
+            batch=batch, suite=suite, task=task, runner=runner, arm=arm,
+            sample=sample, pair_id=pair_id, timeout=timeout,
+            concurrency=concurrency, purpose=purpose, repo_root=repo_root,
+            results_root=results_root, version=versions[runner],
+        ) for arm in ordered_arms]
+
+    records: list[dict] = []
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
-        futs = {pool.submit(one_run, batch, t, r, a, i,
-                            skill_text(TASKS[t][0])): (t, r, a, i)
-                for t, r, a, i in jobs}
-        for fut in as_completed(futs):
-            try:
-                recs.append(fut.result())
-            except Exception as e:
-                log(f"ERROR {futs[fut]}: {e}")
-    return recs
+        futures = [pool.submit(run_pair, *block) for block in blocks]
+        for future in as_completed(futures):
+            records.extend(future.result())
+    records.sort(key=lambda item: (
+        item["task"], item["runner"], item["sample"], item["arm"]
+    ))
+    finished = {**manifest, "finished_at": utcnow(), "record_count": len(records)}
+    (batch_dir / "manifest.json").write_text(
+        json.dumps(finished, indent=2, sort_keys=True) + "\n"
+    )
+    _write_history(finished, records, repo_root, results_root)
+    return records
 
 
-def probe_runner(runner: str) -> dict:
-    """Model-level check: ask the isolated agent what instructions it sees."""
-    with tempfile.TemporaryDirectory(prefix="skilleanon-probe-") as tmp:
-        base = Path(tmp)
-        run_dir = base / "workspace"
-        run_dir.mkdir()
-        prompt = ("Before doing anything: list the names of any skills, custom "
-                  "instructions, or AGENTS.md content currently loaded in your "
-                  "context. If none, reply exactly NONE. Then stop.")
-        res = run_agent(runner, run_dir, prompt, base)
-        res["runner"] = runner
-        return res
+def _select_tasks(suite: SuiteSpec, raw: str) -> tuple[TaskSpec, ...]:
+    if raw == "all":
+        return suite.tasks
+    wanted = raw.split(",")
+    by_id = {task.id: task for task in suite.tasks}
+    unknown = set(wanted) - set(by_id)
+    if unknown:
+        raise ValueError(f"unknown task: {sorted(unknown)[0]}")
+    return tuple(by_id[name] for name in wanted)
 
 
-# ---------------------------------------------------------------- cli
+def _select_runners(suite: SuiteSpec, raw: str) -> tuple[str, ...]:
+    wanted = tuple(suite.runners) if raw == "all" else tuple(raw.split(","))
+    unknown = set(wanted) - set(suite.runners)
+    if unknown:
+        raise ValueError(f"runner not in suite: {sorted(unknown)[0]}")
+    return wanted
 
-def main():
-    ap = argparse.ArgumentParser(prog="skill-eval")
-    sub = ap.add_subparsers(dest="cmd", required=True)
-    r = sub.add_parser("run")
-    r.add_argument("--tasks", default="all")
-    r.add_argument("--runners", default="all")
-    r.add_argument("--arms", default="with,without")
-    r.add_argument("--samples", type=int, default=5)
-    r.add_argument("--concurrency", type=int, default=6)
-    r.add_argument("--batch", default=None,
-                   help="batch id; defaults to <UTC timestamp>_<uuid4hex4>")
-    rp = sub.add_parser("report")
-    rp.add_argument("--batch", default=None,
-                    help="comma-separated batch ids, oldest first; "
-                         "default: all series-v1 batches, latest wins per task")
-    sub.add_parser("probe")
-    args = ap.parse_args()
 
-    if args.cmd == "probe":
-        out = {}
-        for runner in RUNNERS:
-            res = probe_runner(runner)
-            out[runner] = {"ok": res["runner_ok"],
-                           "reply_tail": (res.get("stdout_tail") or "")[-1200:]}
-            log(f"probe {runner}: ok={res['runner_ok']}")
-        (RESULTS / "isolation").mkdir(parents=True, exist_ok=True)
-        (RESULTS / "isolation" / "probe.json").write_text(json.dumps(out, indent=2))
-        for runner, o in out.items():
-            print(f"--- {runner} ---\n{o['reply_tail']}\n", file=sys.stderr)
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="skill-eval")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    validate_parser = subparsers.add_parser("validate")
+    validate_parser.add_argument("--suite", type=Path, required=True)
+    validate_parser.add_argument("--tasks", default="all")
+    run_parser = subparsers.add_parser("run")
+    run_parser.add_argument("--suite", type=Path, required=True)
+    run_parser.add_argument("--tasks", default="all")
+    run_parser.add_argument("--runners", default="all")
+    run_parser.add_argument(
+        "--purpose", choices=("validation", "screen", "confirmatory"),
+        default="validation",
+    )
+    run_parser.add_argument("--batch")
+    report_parser = subparsers.add_parser("report")
+    report_parser.add_argument("--batch", required=True,
+                               help="comma-separated native-v2 batch ids")
+    args = parser.parse_args()
+
+    if args.command == "report":
+        from skill_eval_report import build_report
+        batches = tuple(args.batch.split(","))
+        (EVALS / "REPORT.md").write_text(build_report(batches, HISTORY))
+        log(f"wrote evals/REPORT.md from {', '.join(batches)}")
         return 0
 
-    if args.cmd == "report":
-        from skill_eval_report import all_batches, build_report
-        batches = (args.batch.split(",") if args.batch else all_batches("v1"))
-        (EVALS / "REPORT.md").write_text(build_report(batches))
-        log(f"wrote evals/REPORT.md from batches {batches}")
+    suite = load_suite(args.suite)
+    tasks = _select_tasks(suite, args.tasks)
+    if args.command == "validate":
+        for task in tasks:
+            log(f"validated {task.id}: {validate_task(task, REPO)}")
         return 0
 
-    batch = args.batch or \
-        f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}_{uuid.uuid4().hex[:4]}"
-    tasks = list(TASKS) if args.tasks == "all" else args.tasks.split(",")
-    runners = list(RUNNERS) if args.runners == "all" else args.runners.split(",")
-    for t in tasks:
-        if t not in TASKS:
-            ap.error(f"unknown task {t}")
-    run_batch(tasks, runners, args.arms.split(","), args.samples,
-              args.concurrency, batch)
-    from skill_eval_report import all_batches, build_report
-    batches = all_batches("v1")
-    (EVALS / "REPORT.md").write_text(build_report(batches))
-    log(f"wrote evals/REPORT.md from batches {batches}")
-    return 0
+    runners = _select_runners(suite, args.runners)
+    if args.purpose == "confirmatory" and (
+        tasks != suite.tasks or runners != tuple(suite.runners)
+    ):
+        parser.error("confirmatory runs must use every frozen task and runner")
+    if args.purpose == "confirmatory" and len(tasks) != 3:
+        parser.error("a confirmatory suite requires exactly three frozen tasks")
+    if args.purpose == "screen" and len(tasks) > 6:
+        parser.error("screen at most six candidate tasks")
+    samples = {
+        "validation": 1,
+        "screen": suite.screen_samples,
+        "confirmatory": suite.samples,
+    }[args.purpose]
+    arms = ("without",) if args.purpose == "screen" else ("with", "without")
+    batch = args.batch or (
+        f"{suite.series}-{args.purpose}-"
+        f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-"
+        f"{uuid.uuid4().hex[:4]}"
+    )
+    concurrency = min(suite.concurrency, len(tasks) * len(runners) * samples)
+    records = run_batch(
+        suite=suite, tasks=tasks, runners=runners, samples=samples,
+        concurrency=concurrency, batch=batch, timeout=suite.timeout_seconds,
+        purpose=args.purpose, arms=arms,
+    )
+    from skill_eval_report import build_report
+    (EVALS / "REPORT.md").write_text(build_report((batch,), HISTORY))
+    invalid = sum(not record["valid"] for record in records)
+    log(f"completed {len(records)} records ({invalid} invalid); wrote REPORT.md")
+    return 1 if invalid else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

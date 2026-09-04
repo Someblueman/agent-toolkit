@@ -1,0 +1,46 @@
+series = "pragmatic-native-v2"
+skill = "pragmatic-engineering"
+calibration_basis = "Fresh six-task baseline screen; three tasks were informative on both Codex and OMP"
+screen_samples = 2
+samples = 2
+concurrency = 2
+timeout_seconds = 600
+ceiling_threshold = 0.95
+quality_effect = 0.10
+efficiency_effect = 0.15
+instability_threshold = 0.25
+
+[runners.codex]
+model = "gpt-5.6-sol"
+thinking = "medium"
+
+[runners.omp]
+model = "opencode-go/glm-5.3-flash"
+thinking = "high"
+
+[[tasks]]
+id = "receipt-tags"
+family = "small-builder-removal"
+source = "Anonymized internal bug-fix pattern: a four-field builder drops data"
+pristine_max = 0.0
+correctness_min = 1.0
+flawed_quality_max = 0.0
+reference_quality_min = 1.0
+
+[[tasks]]
+id = "single-memory-store"
+family = "single-implementation-abstraction"
+source = "Anonymized internal cleanup pattern: one store remains behind a protocol and factory"
+pristine_max = 0.34
+correctness_min = 1.0
+flawed_quality_max = 0.0
+reference_quality_min = 1.0
+
+[[tasks]]
+id = "upload-options"
+family = "small-builder-removal"
+source = "Anonymized internal bug-fix pattern: a four-field upload builder drops data"
+pristine_max = 0.0
+correctness_min = 1.0
+flawed_quality_max = 0.0
+reference_quality_min = 1.0

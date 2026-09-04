@@ -1,58 +1,47 @@
-# Skill Effectiveness Evals
+# Native Skill Effectiveness Evals
 
-Deterministic measurement of whether loading a skill changes agent output.
+This is the clean native-v2 evaluation harness. Pre-v2 suites, tasks, runs,
+baselines, archives, and compatibility decoders are not retained. The current
+tree contains one frozen suite and its three fresh task assets.
 
-- `tasks/<task-id>/` — one eval task per directory:
-  - `task.md` — the prompt given to the agent.
-  - `scaffold/` — files copied into a fresh run workspace.
-  - `verify.py` — mechanical scorer. Prints one line `METRICS {...}` (JSON) and
-    exits 0 on pass, non-zero on fail. No judgment, no model output parsing.
-- `REPORT.md` — committed baseline/current scores with with/without deltas.
+The harness compares native skill availability across Codex and OMP. It keeps
+correctness, task-specific quality, efficiency, patch footprint, and reliability
+as separate dimensions.
 
-- `archive/` — retired series-v0 material: calibration report, reconstructed
-  batch manifests (raw v0 run records were destroyed by an over-broad
-  cleanup on 2026-09-03; nothing was fabricated to replace them).
-- `results/` — raw per-run JSON (gitignored; includes model stdout/stderr
-  tails, so it must never be committed). Batch metadata (samples, models,
-  runner versions, task fingerprints, harness revision, series) lives in
-  each batch's `manifest.json`, mirrored in the committed `REPORT.md`.
+## Contract
 
-Provenance: series-v1 tasks were designed against the specific rules of the
-skill they measure (each `task.md` states only the observable business
-contract; the mechanism the skill teaches is never named). Series-v0 tasks
-derived from the skills' own evaluation references; they are retired.
+- The `without` arm uses an isolated native profile with the target skill
+  absent. The `with` arm differs only by installing the complete skill package.
+- Prompts state outcomes without naming the skill's preferred design decision.
+- Correctness controls `pass`. A deterministic `quality_score` and named
+  `quality_checks` describe code quality separately.
+- Baseline screening uses only the `without` arm and labels every task/runtime
+  `informative`, `saturated`, `unstable`, `insufficient`, or `blocked`.
+- Efficiency is compared only within complete pairs sharing exact task and
+  runtime fingerprints. There is no pooled cross-runner or universal score.
 
-Per-task provenance and the series-v0 calibration ladder (N=5 saturated on
-all runners) are recorded in `archive/REPORT-v0-calibration.md`.
+## Workflow
 
-## Series v1 pilot results (n=2/arm, 3 runners; sh-rollup n=4)
+Every operation requires an explicit suite path:
 
-- **Saturated (no discrimination):** event-sink-concrete, fanout-cancel-batch,
-  go-error-chain (all runners 100% both arms); sh-rollup-probe on omp; soa on
-  opencode (agents reach ~8x SoA unaided - the World API invites the fix);
-  regex on its passing runs (5.8-5.9x unaided).
-- **Initially universal fail, then negative after fix:** msg-clean-cutover
-  first went 0/10 both arms (every agent retained the legacy function).
-  After restoring the one-send-path requirement to the prompt:
-  agents clean-cut 4/4 (deleted the legacy function outright); with-skill
-  agents kept a forwarding shim 3/4 times (`single_path` gate). Reading the
-  skill's compatibility guidance appears to make agents MORE conservative
-  about deleting code, not less. Codex rows are 404s from the chatgpt
-  backend endpoint (server-side, not quota); opencode had 420s timeouts on
-  3 runs in the main batch (run caps since raised to 900s/840s).
+```bash
+python3 scripts/skill_eval.py validate \
+  --suite evals/suites/pragmatic-frozen-v2.toml
+```
 
-**Headline finding after 7 redesigned tasks and ~90 scored runs:** none of
-the five evaluated skills produced a measurable with/without pass-rate delta
-on current frontier models via mechanical metrics. Frontier models either
-solve these tasks unaided (ceiling) or fail for reasons the skill text does
-not address (floor). Making skills measurably effective - or detecting their
-effect - likely requires harder/multi-step tasks, quality-graded metrics
-rather than pass/fail, or models below frontier capability.
+The completed fresh proof screened six candidates, froze three that were
+informative on both harnesses, and ran two randomized pairs per task and
+harness. To run a new confirmatory batch against the unchanged frozen contract:
 
-## Series v0 (retired calibration, archived)
+```bash
+python3 scripts/skill_eval.py run \
+  --suite evals/suites/pragmatic-frozen-v2.toml \
+  --purpose confirmatory --batch NEW-PROOF
+```
 
-The original tasks (py-async-endpoint, tax-refactor, hot-path-optimize) are
-retired: saturated at N=5 on all runners (see
-`archive/REPORT-v0-calibration.md`). Raw v0 run records were destroyed by an
-over-broad cleanup on 2026-09-03; aggregate report and reconstructed
-manifests survive under `archive/`.
+Raw traces are created under gitignored `evals/results/`; sanitized numeric
+records are created under `evals/history/`. `evals/REPORT.md` is generated only
+from explicitly named batches. There is no archive or legacy input path.
+
+For calibration, `scaffold/`, `flawed/`, and `reference/` are complete
+workspaces. Variants are never overlaid, so clean replacement can be measured.

@@ -1,110 +1,154 @@
-# Skill Effectiveness Report
+# Native Skill Value Report
 
-Batches: `20260903T094508_323e`, `20260903T143535_3094`, `ext-sh-1`, `msgclean-fix1`  |  Generated: 2026-09-03T15:13:08+00:00
-- `20260903T094508_323e`: samples/arm=2, models={'codex': 'gpt-5.6-sol', 'opencode': 'opencode/big-pickle', 'omp': 'openai-codex/gpt-5.6-sol'}, versions={'opencode': '1.18.27', 'omp': 'omp/18.1.4'}
-- `20260903T143535_3094`: samples/arm=2, models={'codex': 'gpt-5.6-sol', 'opencode': 'opencode/big-pickle', 'omp': 'openai-codex/gpt-5.6-sol'}, versions={'codex': 'codex-cli 0.149.1', 'opencode': '1.18.27', 'omp': 'omp/18.1.4'}
-- `ext-sh-1`: samples/arm=2, models={'codex': 'gpt-5.6-sol', 'opencode': 'opencode/big-pickle', 'omp': 'openai-codex/gpt-5.6-sol'}, versions={'opencode': '1.18.27', 'omp': 'omp/18.1.4'}
-- `msgclean-fix1`: samples/arm=2, models={'codex': 'gpt-5.6-sol', 'opencode': 'opencode/big-pickle', 'omp': 'openai-codex/gpt-5.6-sol'}, versions={'codex': 'codex-cli 0.149.1', 'opencode': '1.18.27', 'omp': 'omp/18.1.4'}
+Correctness is the gate. Skill-specific quality, operational efficiency,
+patch footprint, and reliability remain separate dimensions. Every verdict
+is limited to the named tasks and exact runtime fingerprint.
 
-Each cell: pass rate [95% Wilson CI] over scored (valid) runs.
-`metric` is the task's mechanical metric (mean over runs with a
-value). `delta` = with-skill minus without-skill; for
-lower-is-better metrics a negative delta is an improvement.
+## Run manifests
 
-**21 run(s) excluded from scoring** (infra failures, isolation leaks, or post-run invalidation):
-See raw JSON under `evals/results/`.
+| batch | purpose | skill | tasks | samples/arm | runners | invalid |
+|---|---|---|---:|---:|---|---:|
+| `pragmatic-v2-screen-20260904` | screen | `pragmatic-engineering` | 3 | 2 | codex, omp | 0 |
+| `pragmatic-v2-screen-20260904-b` | screen | `pragmatic-engineering` | 3 | 2 | codex, omp | 0 |
+| `pragmatic-v2-health-codex-20260904` | validation | `pragmatic-engineering` | 1 | 1 | codex | 0 |
+| `pragmatic-v2-health-omp-20260904` | validation | `pragmatic-engineering` | 1 | 1 | omp | 0 |
+| `pragmatic-v2-proof-20260904` | confirmatory | `pragmatic-engineering` | 3 | 2 | codex, omp | 0 |
 
-## event-sink-concrete
+## Frozen identities
 
-Skill: `pragmatic-engineering`
+- `pragmatic-v2-screen-20260904` skill: `50423de0ad46fabdaf874fd907ec2749d85f19bf5d9249e0822fdacfb3671e87`
+  - task `notification-cutover`: `7ec137a06c92463841e9c3781a6dc0cc9b1aa520ac040de032ffab28cf76c6dd`
+  - task `receipt-tags`: `55e9de15caaeed91026bd15e05c9be46fc61e9fdfb779e64a72d99b0be4df0c3`
+  - task `retry-schema`: `997b0f761e9aa4ddab3df48bac76125defac8a56b2f1457da5b765c082bff401`
+  - runtime `codex`: `b33a20ab069cdd6758b55466d63065f3ec7f14e9eca9af5d0288f9400bb041f1`
+  - runtime `omp`: `e9fa4b104a0f479c78c207df80e4031a5a2f81b5d1e41dd085bc24e028f9183b`
+- `pragmatic-v2-screen-20260904-b` skill: `50423de0ad46fabdaf874fd907ec2749d85f19bf5d9249e0822fdacfb3671e87`
+  - task `profile-field-cutover`: `c65ebf5cb92d1ed9d36ed96c3c0f76e11ca59fde1e4f3def3e9e71de344ca6c1`
+  - task `single-memory-store`: `053d2433aff5eabb30373cf36ac08265d500c4a82226109d701cc458508363d2`
+  - task `upload-options`: `ecacf27844b1de9e12a958fea40a11b4ce31b70f045dfca7c79e8888a13afae9`
+  - runtime `codex`: `b33a20ab069cdd6758b55466d63065f3ec7f14e9eca9af5d0288f9400bb041f1`
+  - runtime `omp`: `e9fa4b104a0f479c78c207df80e4031a5a2f81b5d1e41dd085bc24e028f9183b`
+- `pragmatic-v2-health-codex-20260904` skill: `50423de0ad46fabdaf874fd907ec2749d85f19bf5d9249e0822fdacfb3671e87`
+  - task `receipt-tags`: `55e9de15caaeed91026bd15e05c9be46fc61e9fdfb779e64a72d99b0be4df0c3`
+  - runtime `codex`: `dea8f9fd770a15d335ccf0112264bacf3a1fc131ab96ce52ab7bdffbc7ec7689`
+- `pragmatic-v2-health-omp-20260904` skill: `50423de0ad46fabdaf874fd907ec2749d85f19bf5d9249e0822fdacfb3671e87`
+  - task `receipt-tags`: `55e9de15caaeed91026bd15e05c9be46fc61e9fdfb779e64a72d99b0be4df0c3`
+  - runtime `omp`: `7e98cf0ff39d5d5346ded2d435d8b1e24985bef29bd8d08ecf35ee17cd67f0f3`
+- `pragmatic-v2-proof-20260904` skill: `50423de0ad46fabdaf874fd907ec2749d85f19bf5d9249e0822fdacfb3671e87`
+  - task `receipt-tags`: `55e9de15caaeed91026bd15e05c9be46fc61e9fdfb779e64a72d99b0be4df0c3`
+  - task `single-memory-store`: `053d2433aff5eabb30373cf36ac08265d500c4a82226109d701cc458508363d2`
+  - task `upload-options`: `ecacf27844b1de9e12a958fea40a11b4ce31b70f045dfca7c79e8888a13afae9`
+  - runtime `codex`: `b33a20ab069cdd6758b55466d63065f3ec7f14e9eca9af5d0288f9400bb041f1`
+  - runtime `omp`: `e9fa4b104a0f479c78c207df80e4031a5a2f81b5d1e41dd085bc24e028f9183b`
 
-| runner | without | with | delta (pass rate) | metric w/o | metric with |
-|---|---|---|---|---|---|
-| codex | 1.0 [0.342,1.0] (n=2) | 1.0 [0.342,1.0] (n=2) | +0.000 | 0.0 | 0.0 |
-| omp | 1.0 [0.342,1.0] (n=2) | 1.0 [0.342,1.0] (n=2) | +0.000 | 0.0 | 0.0 |
-| opencode | 1.0 [0.342,1.0] (n=2) | 1.0 [0.342,1.0] (n=2) | +0.000 | 0.0 | 0.0 |
+## Task-specific quality measures
 
-## fanout-cancel-batch
+- `notification-cutover`: `flows_use_typed_notifications`, `retired_module_removed`, `retired_symbol_removed`
+- `profile-field-cutover`: `direct_update`, `legacy_field_removed`, `single_write_path`
+- `receipt-tags`: `flows_construct_receipts_directly`, `fluent_builder_calls_removed`, `small_builder_removed`
+- `retry-schema`: `legacy_decoder_removed`, `legacy_keys_removed`, `single_schema_path`
+- `single-memory-store`: `concrete_store_used_directly`, `factory_removed`, `single_use_protocol_removed`
+- `upload-options`: `fluent_builder_calls_removed`, `paths_construct_uploads_directly`, `small_builder_removed`
 
-Skill: `python-engineering`
+## Baseline screening
 
-| runner | without | with | delta (pass rate) | metric w/o | metric with |
-|---|---|---|---|---|---|
-| codex | 1.0 [0.342,1.0] (n=2) | 1.0 [0.342,1.0] (n=2) | +0.000 | 0.1 | 0.1 |
-| omp | 1.0 [0.342,1.0] (n=2) | 1.0 [0.342,1.0] (n=2) | +0.000 | 0.1 | 0.1 |
-| opencode | 1.0 [0.342,1.0] (n=2) | 1.0 [0.207,1.0] (n=1) | +0.000 | 0.1 | 0.1 |
+Only the without-skill arm is used. Saturated and unstable tasks must
+not be promoted into a frozen comparison for that runtime.
 
-## go-error-chain
+| runner | task | correctness | quality | spread | pass | status |
+|---|---|---:|---:|---:|---:|---|
+| codex | notification-cutover | 1.00 | 0.33 | 0.00 | 1.00 | **informative** |
+| codex | profile-field-cutover | 1.00 | 1.00 | 0.00 | 1.00 | **saturated** |
+| codex | receipt-tags | 1.00 | 0.00 | 0.00 | 1.00 | **informative** |
+| codex | retry-schema | 1.00 | 1.00 | 0.00 | 1.00 | **saturated** |
+| codex | single-memory-store | 1.00 | 0.00 | 0.00 | 1.00 | **informative** |
+| codex | upload-options | 1.00 | 0.00 | 0.00 | 1.00 | **informative** |
+| omp | notification-cutover | 1.00 | 1.00 | 0.00 | 1.00 | **saturated** |
+| omp | profile-field-cutover | 1.00 | 1.00 | 0.00 | 1.00 | **saturated** |
+| omp | receipt-tags | 1.00 | 0.00 | 0.00 | 1.00 | **informative** |
+| omp | retry-schema | 1.00 | 1.00 | 0.00 | 1.00 | **saturated** |
+| omp | single-memory-store | 1.00 | 0.00 | 0.00 | 1.00 | **informative** |
+| omp | upload-options | 1.00 | 0.00 | 0.00 | 1.00 | **informative** |
 
-Skill: `go-engineering`
+### Confirmatory freeze gate
 
-| runner | without | with | delta (pass rate) | metric w/o | metric with |
-|---|---|---|---|---|---|
-| omp | 1.0 [0.342,1.0] (n=2) | 1.0 [0.342,1.0] (n=2) | +0.000 | - | - |
-| opencode | 1.0 [0.342,1.0] (n=2) | 1.0 [0.342,1.0] (n=2) | +0.000 | - | - |
+- Screened 6 candidate tasks; eligible on every screened harness: receipt-tags, single-memory-store, upload-options.
+- Gate status: **passed**.
 
-## msg-clean-cutover
+## pragmatic-engineering — codex
 
-Skill: `pragmatic-engineering`
+Model: `gpt-5.6-sol`  
+Runtime fingerprint: `b33a20ab069cdd6758b55466d63065f3ec7f14e9eca9af5d0288f9400bb041f1`  
+Proven skill reads: 6/6 treatment runs; trace-unknown: 0  
+Suite-bounded verdict: **unstable**
 
-| runner | without | with | delta (pass rate) | metric w/o | metric with |
-|---|---|---|---|---|---|
-| omp | 1.0 [0.342,1.0] (n=2) | 0.0 [0.0,0.658] (n=2) | -1.000 | - | - |
-| opencode | 1.0 [0.342,1.0] (n=2) | 0.5 [0.095,0.905] (n=2) | -0.500 | - | - |
+### Outcome and skill-specific quality
 
-## regex-recompile-per-row
+| task | correctness without→with | quality without→with | pass without→with | value |
+|---|---:|---:|---:|---|
+| receipt-tags | 1.00→1.00 (+0.00) | 0.00→0.00 (+0.00) | 1.00→1.00 | **no-observed-benefit** |
+| single-memory-store | 1.00→1.00 (+0.00) | 1.00→1.00 (+0.00) | 1.00→1.00 | **unstable** |
+| upload-options | 1.00→1.00 (+0.00) | 0.00→0.00 (+0.00) | 1.00→1.00 | **no-observed-benefit** |
+- `single-memory-store` baseline quality shifted from 0.00 in screening to 1.00 in confirmation; combined spread 1.00 is **unstable**.
 
-Skill: `profiling-software-performance`
+### Operational efficiency
 
-| runner | without | with | delta (pass rate) | metric w/o | metric with |
-|---|---|---|---|---|---|
-| omp | - | 1.0 [0.207,1.0] (n=1) |  | - | 5.96 |
-| opencode | 0.5 [0.095,0.905] (n=2) | 0.0 [0.0,0.658] (n=2) | -0.500 | 5.85 | - |
+Negative changes use fewer resources. Tool calls and agent steps are
+native-runner counts and are comparable only within this runtime.
 
-## sh-rollup-probe
+| task | seconds | tokens | cached | cost | tools | steps | interpretation |
+|---|---:|---:|---:|---:|---:|---:|---|
+| receipt-tags | 30.0→41.6 (+38%) | 95378→104414 (+9%) | 84800→85632 (+1%) | n/a | 5.0→5.5 (+10%) | 3.0→3.0 (+0%) | **more-expensive** |
+| single-memory-store | 35.0→30.7 (-12%) | 93261→84158 (-10%) | 85632→72768 (-15%) | n/a | 5.0→4.0 (-20%) | 3.0→3.0 (+0%) | **more-efficient** |
+| upload-options | 51.1→40.0 (-22%) | 123968→105653 (-15%) | 112192→91072 (-19%) | n/a | 6.0→6.0 (+0%) | 3.0→3.0 (+0%) | **more-efficient** |
 
-Skill: `shell-engineering`
+### Patch footprint and reliability
 
-| runner | without | with | delta (pass rate) | metric w/o | metric with |
-|---|---|---|---|---|---|
-| omp | 1.0 [0.51,1.0] (n=4) | 1.0 [0.51,1.0] (n=4) | +0.000 | - | - |
-| opencode | 0.75 [0.301,0.954] (n=4) | 0.5 [0.15,0.85] (n=4) | -0.250 | - | - |
+| task | files without→with | diff +added/-deleted | final LOC without→with | timeouts without→with |
+|---|---:|---:|---:|---:|
+| receipt-tags | 1.00→1.50 | +1.00/-1.00→+3.00/-5.50 | 56.00→53.50 | 0.00→0.00 |
+| single-memory-store | 2.00→2.00 | +4.00/-17.00→+4.00/-17.00 | 26.00→26.00 | 0.00→0.00 |
+| upload-options | 2.00→2.00 | +6.00/-12.00→+6.00/-12.00 | 54.00→54.00 | 0.00→0.00 |
 
-## soa-layout-rewrite
+## pragmatic-engineering — omp
 
-Skill: `hardware-aware-optimization`
+Model: `opencode-go/glm-5.3-flash`  
+Runtime fingerprint: `e9fa4b104a0f479c78c207df80e4031a5a2f81b5d1e41dd085bc24e028f9183b`  
+Proven skill reads: 0/6 treatment runs; trace-unknown: 6  
+Suite-bounded verdict: **no-observed-benefit**
 
-| runner | without | with | delta (pass rate) | metric w/o | metric with |
-|---|---|---|---|---|---|
-| omp | 1.0 [0.207,1.0] (n=1) | 0.5 [0.095,0.905] (n=2) | -0.500 | 7.76 | 7.49 |
-| opencode | 1.0 [0.342,1.0] (n=2) | 1.0 [0.342,1.0] (n=2) | +0.000 | 8.415 | 8.65 |
+### Outcome and skill-specific quality
 
-`*` = non-overlapping 95% CIs (distinguishable at this N).
+| task | correctness without→with | quality without→with | pass without→with | value |
+|---|---:|---:|---:|---|
+| receipt-tags | 1.00→1.00 (+0.00) | 0.00→0.00 (+0.00) | 1.00→1.00 | **no-observed-benefit** |
+| single-memory-store | 1.00→1.00 (+0.00) | 0.00→0.00 (+0.00) | 1.00→1.00 | **no-observed-benefit** |
+| upload-options | 1.00→1.00 (+0.00) | 0.00→0.00 (+0.00) | 1.00→1.00 | **no-observed-benefit** |
 
-## Sample-size calibration
+### Operational efficiency
 
-Wilson CI half-width ~1.96*sqrt(p(1-p)/n); separating two arms at a
-true pass-rate gap g needs roughly n ~ 3/g^2 samples per arm
-(g=0.3 -> ~33; g=0.5 -> ~12). Current N per arm and verdicts:
+Negative changes use fewer resources. Tool calls and agent steps are
+native-runner counts and are comparable only within this runtime.
 
-| task | runner | N per arm | verdict |
-|---|---|---|---|
-| event-sink-concrete | codex | 2 | saturated: both arms at ceiling; add a harder task, more N won't help |
-| event-sink-concrete | omp | 2 | saturated: both arms at ceiling; add a harder task, more N won't help |
-| event-sink-concrete | opencode | 2 | saturated: both arms at ceiling; add a harder task, more N won't help |
-| fanout-cancel-batch | codex | 2 | saturated: both arms at ceiling; add a harder task, more N won't help |
-| fanout-cancel-batch | omp | 2 | saturated: both arms at ceiling; add a harder task, more N won't help |
-| fanout-cancel-batch | opencode | 2 | saturated: both arms at ceiling; add a harder task, more N won't help |
-| go-error-chain | omp | 2 | saturated: both arms at ceiling; add a harder task, more N won't help |
-| go-error-chain | opencode | 2 | saturated: both arms at ceiling; add a harder task, more N won't help |
-| msg-clean-cutover | omp | 2 | overlapping; est. n~3/arm to resolve gap 1.00 |
-| msg-clean-cutover | opencode | 2 | overlapping; est. n~12/arm to resolve gap 0.50 |
-| regex-recompile-per-row | omp | 0 | no valid runs in one arm (infra failures) - not scorable |
-| regex-recompile-per-row | opencode | 2 | overlapping; est. n~12/arm to resolve gap 0.50 |
-| sh-rollup-probe | omp | 4 | saturated: both arms at ceiling; add a harder task, more N won't help |
-| sh-rollup-probe | opencode | 4 | overlapping; est. n~48/arm to resolve gap 0.25 |
-| soa-layout-rewrite | omp | 1 | overlapping; est. n~12/arm to resolve gap 0.50 |
-| soa-layout-rewrite | opencode | 2 | saturated: both arms at ceiling; add a harder task, more N won't help |
+| task | seconds | tokens | cached | cost | tools | steps | interpretation |
+|---|---:|---:|---:|---:|---:|---:|---|
+| receipt-tags | 24.4→22.1 (-10%) | 97944→89233 (-9%) | 86976→79168 (-9%) | 0.0022→0.0020 (-9%) | 6.5→5.5 (-15%) | 5.5→5.0 (-9%) | **more-efficient** |
+| single-memory-store | 18.1→16.5 (-9%) | 88010→97553 (+11%) | 86912→87680 (+1%) | 0.0014→0.0021 (+48%) | 4.5→5.5 (+22%) | 5.0→5.5 (+10%) | **more-expensive** |
+| upload-options | 17.7→24.6 (+39%) | 71527→98730 (+38%) | 61472→97088 (+58%) | 0.0017→0.0016 (-5%) | 4.0→7.0 (+75%) | 4.0→5.5 (+38%) | **more-expensive** |
 
-Increase `--samples`, rerun `run` then `report`, until the arms' CIs
-reliably separate (or reliably don't) for the conclusion you need.
+### Patch footprint and reliability
+
+| task | files without→with | diff +added/-deleted | final LOC without→with | timeouts without→with |
+|---|---:|---:|---:|---:|
+| receipt-tags | 1.00→1.00 | +1.00/-1.00→+1.00/-1.00 | 56.00→56.00 | 0.00→0.00 |
+| single-memory-store | 1.00→1.00 | +1.00/-1.00→+1.00/-1.00 | 39.00→39.00 | 0.00→0.00 |
+| upload-options | 1.00→1.00 | +1.00/-2.00→+1.00/-1.00 | 59.00→60.00 | 0.00→0.00 |
+
+## Across tested harnesses
+
+- `codex` / `gpt-5.6-sol`: **unstable**
+- `omp` / `opencode-go/glm-5.3-flash`: **no-observed-benefit**
+- These are parallel task-bounded verdicts, not a pooled portability claim.
+
+Activation is `unknown` unless the native trace proves a successful
+skill read. Availability alone is not treated as invocation.

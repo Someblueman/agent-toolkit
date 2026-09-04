@@ -1,0 +1,53 @@
+{
+  "arms": [
+    "with",
+    "without"
+  ],
+  "batch": "pragmatic-v2-health-omp-20260904",
+  "calibration_basis": "Fresh six-task baseline screen; three tasks were informative on both Codex and OMP",
+  "concurrency": 1,
+  "fingerprints": {
+    "runtimes": {
+      "omp": "7e98cf0ff39d5d5346ded2d435d8b1e24985bef29bd8d08ecf35ee17cd67f0f3"
+    },
+    "skill": "50423de0ad46fabdaf874fd907ec2749d85f19bf5d9249e0822fdacfb3671e87",
+    "tasks": {
+      "receipt-tags": "55e9de15caaeed91026bd15e05c9be46fc61e9fdfb779e64a72d99b0be4df0c3"
+    }
+  },
+  "finished_at": "2026-09-04T19:34:16+00:00",
+  "purpose": "validation",
+  "record_count": 2,
+  "runners": {
+    "omp": {
+      "model": "opencode-go/glm-5.3-flash",
+      "thinking": "high",
+      "version": "omp/18.1.6"
+    }
+  },
+  "samples_per_arm": 1,
+  "schema_version": 2,
+  "screen_samples": 2,
+  "series": "pragmatic-native-v2",
+  "skill": "pragmatic-engineering",
+  "started_at": "2026-09-04T19:33:37+00:00",
+  "suite": "evals/suites/pragmatic-frozen-v2.toml",
+  "tasks": [
+    {
+      "correctness_min": 1.0,
+      "family": "small-builder-removal",
+      "flawed_quality_max": 0.0,
+      "id": "receipt-tags",
+      "pristine_max": 0.0,
+      "reference_quality_min": 1.0,
+      "source": "Anonymized internal bug-fix pattern: a four-field builder drops data"
+    }
+  ],
+  "thresholds": {
+    "ceiling": 0.95,
+    "efficiency_effect": 0.15,
+    "instability": 0.25,
+    "quality_effect": 0.1
+  },
+  "timeout_seconds": 600
+}
