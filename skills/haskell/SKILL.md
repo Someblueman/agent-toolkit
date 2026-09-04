@@ -77,8 +77,7 @@ Match verification effort directly to the scope and risk of the change:
 - Load `references/evaluation-performance.md` for laziness, WHNF/NF, strictness, profiling, Core, and optimization.
 - Load `references/effects-concurrency.md` for exceptions, resources, asynchronous exceptions, STM, structured concurrency, and streaming.
 - Load `references/source-map.md` when auditing or refreshing this skill's authority.
-- Load `references/evaluation-scenarios.md` when testing whether revisions preserve the intended judgment (includes Scenarios 13–16).
 
 ## Maintenance
 
-When changing this skill, keep prescriptions tied to `references/source-map.md`, test them against `references/evaluation-scenarios.md`, and validate the package with the skill-creator checks. Prefer durable semantic guidance over version-specific fashion.
+When changing this skill, keep prescriptions tied to `references/source-map.md` and validate the package with the skill-creator checks. Prefer durable semantic guidance over version-specific fashion.

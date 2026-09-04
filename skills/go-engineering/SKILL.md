@@ -52,5 +52,3 @@ Do not hide pre-existing failures by changing unrelated code. Report the exact c
 - JSON parsing (`encoding/json`, `segmentio`), SQL transactions, buffer reuse with `sync.Pool`, wire protocols: read [references/data-serialization.md](references/data-serialization.md).
 - Escape analysis (`-gcflags="-m"`), CPU/memory profiling (`pprof`), benchmarks (`benchstat`), `GOMEMLIMIT`, GC tuning: read [references/performance-profiling.md](references/performance-profiling.md).
 - Fast-Path `go test` filtering, race detector (`-race`), `golangci-lint` configuration, `go.mod` hygiene, build tags: read [references/tooling-ci.md](references/tooling-ci.md).
-
-When maintaining this skill itself, use the realistic maintainer scenarios in [references/evaluation-scenarios.md](references/evaluation-scenarios.md) for behavioral regression testing.

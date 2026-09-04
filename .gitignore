@@ -30,7 +30,3 @@ build/
 
 # OMP lock file, written next to the resolved config path
 configs/omp/config.yml.lock
-
-# Skill-eval raw run data includes model transcripts and is never committed.
-# Sanitized numeric history may be committed only for a new explicit suite.
-evals/results/

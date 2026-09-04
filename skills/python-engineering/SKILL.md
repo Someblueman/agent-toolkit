@@ -56,5 +56,3 @@ Discover and follow the repository\x27s own commands first. Match validation sco
 - Modern `uv` workflows (`pyproject.toml`, `uv run`), `ruff` linting/formatting, strict `mypy`/`pyright`, and Fast-Path `pytest` test filtering recipes: read [references/tooling-uv-testing.md](references/tooling-uv-testing.md).
 
 When several areas interact, read the smallest combination that covers the decision. Do not load every reference for a routine edit.
-
-When maintaining this skill itself, use the realistic cases in [references/evaluation-scenarios.md](references/evaluation-scenarios.md) for behavioral regression testing.

@@ -62,5 +62,3 @@ Run full verification for critical pipelines, deployment hooks, and multi-script
 | `shellcheck` directives, `bats-core` test harness, mocking, CI pipeline verification | [references/tooling-testing.md](references/tooling-testing.md) |
 
 ## 5. Maintain this skill
-
-When maintaining or updating this skill itself, use the realistic maintainer evaluation scenarios in [references/evaluation-scenarios.md](references/evaluation-scenarios.md) for behavioral regression testing.

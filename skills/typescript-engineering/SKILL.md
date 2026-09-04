@@ -120,5 +120,3 @@ For a durable-data change, test every supported version, unknown and malformed v
 Read [references/tooling-testing.md](references/tooling-testing.md) before changing `tsconfig`, package/module metadata, declarations, lint/format setup, tests, dependencies, or CI.
 
 ## 8. Maintain this skill
-
-When changing this skill itself, use the maintainer-only prompt corpus and behavioral rubric in [references/evaluation.md](references/evaluation.md). Do not load it for ordinary TypeScript work.

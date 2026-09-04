@@ -63,5 +63,3 @@ Do not hide a pre-existing failure by changing unrelated code. Report the exact 
 - Lints, formatting, tests, dependency checks, Miri, fuzzing, sanitizers, coverage, or CI: read [references/tooling-ci.md](references/tooling-ci.md).
 
 When several areas interact, read the smallest combination that covers the decision. Do not load every reference for a routine edit.
-
-When maintaining this skill itself, use the realistic cases in [references/evaluation-scenarios.md](references/evaluation-scenarios.md) for behavioral regression testing.
