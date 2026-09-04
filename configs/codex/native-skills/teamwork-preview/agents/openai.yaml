@@ -1,0 +1,4 @@
+interface:
+  display_name: "Teamwork Preview"
+  short_description: "Interview, delegate, verify, and deliver"
+  default_prompt: "Use $teamwork-preview to scope and execute this project with a fast multi-agent team."

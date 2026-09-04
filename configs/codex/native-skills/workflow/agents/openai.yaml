@@ -1,0 +1,4 @@
+interface:
+  display_name: "Workflow"
+  short_description: "Plan and submit an unattended AFK run"
+  default_prompt: "Use $workflow to plan and submit this software change as an unattended AFK run."

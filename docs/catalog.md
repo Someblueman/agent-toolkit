@@ -22,6 +22,19 @@ The index of everything shippable in this toolkit. Updated when skills, hooks, a
 
 Status values: `scaffold` (placeholder exists), `draft` (real content, not validated), `stable` (validated + used in the wild).
 
+## Codex-specific skills
+
+| Name | Source | Installation |
+|---|---|---|
+| teamwork-preview | `configs/codex/native-skills/teamwork-preview/` | Selected for Codex; imported from the existing personal installation on 2026-09-04 without changing behavior. |
+| workflow | `configs/codex/native-skills/workflow/` | Selected for Codex; imported from the existing personal installation on 2026-09-04 without changing behavior. Requires the external `afk` CLI. |
+
+`configs/codex/skills.txt` is the explicit Codex selection. Draft shared skills and `fanout` remain available in the repository but are not installed into Codex by default.
+
+## External skill ownership
+
+Codex's `.system` skills and plugin-cache skills remain vendor-managed; their source is not copied here. The personal installations of `frontend-design`, `develop-web-game`, `playwright`, and `playwright-interactive` were selected for removal on 2026-09-04 because they are seldom used. The user identifies these as official external skills; their exact upstream versions were not independently established. Do not reintroduce local forks during toolkit refresh. If needed later, install from a verified upstream source through the normal skill installer.
+
 ## Hooks
 
 *None yet.* See [hooks/](../hooks/).

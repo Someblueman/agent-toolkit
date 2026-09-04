@@ -1,0 +1,11 @@
+c-engineering
+define-goal
+go-engineering
+haskell
+pragmatic-engineering
+python-engineering
+rust-engineering
+shell-engineering
+teamwork-preview
+typescript-engineering
+workflow
