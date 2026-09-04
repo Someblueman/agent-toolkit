@@ -17,10 +17,10 @@ Load this skill whenever:
 
 ## Command syntax
 
-Invoke the standalone tool entry point `tools/fanout/bin/fanout` from the workspace root:
+Resolve the loaded skill directory through symlinks and set `TOOLKIT_ROOT` to its toolkit checkout (two parents above `skills/fanout`). If installed as a detached copy, require an explicit toolkit location. Verify the executable exists; do not assume the target repository contains it. Schema-valid receipts establish structure, not grounded evidence; independently inspect cited files and commands.
 
 ```sh
-tools/fanout/bin/fanout <prompt_file> \
+"$TOOLKIT_ROOT/tools/fanout/bin/fanout" <prompt_file> \
   --output <output_dir> \
   [--harness {agy,opencode}] \
   [--workers <count>] \
@@ -190,7 +190,7 @@ Identify potential concurrency bottlenecks, resource leaks, or lifecycle issues.
 EOF
 
 # 2. Run 4 workers with quorum threshold of 3
-tools/fanout/bin/fanout /tmp/arch-review-prompt.md \
+"$TOOLKIT_ROOT/tools/fanout/bin/fanout" /tmp/arch-review-prompt.md \
   --harness agy \
   --workers 4 \
   --concurrency 4 \
@@ -210,7 +210,7 @@ Return your diagnosis in structured JSON payload with keys "root_cause" and "rec
 EOF
 
 # 2. Run 3 OpenCode workers using the plan agent
-tools/fanout/bin/fanout /tmp/test-failure-prompt.md \
+"$TOOLKIT_ROOT/tools/fanout/bin/fanout" /tmp/test-failure-prompt.md \
   --harness opencode \
   --agent plan \
   --workers 3 \
@@ -223,7 +223,7 @@ tools/fanout/bin/fanout /tmp/test-failure-prompt.md \
 ### Example 3: Advisory Consensus Check with Custom Model & Timeout
 
 ```sh
-tools/fanout/bin/fanout /tmp/rfc-proposal.md \
+"$TOOLKIT_ROOT/tools/fanout/bin/fanout" /tmp/rfc-proposal.md \
   --harness agy \
   --model gemini-3.7-flash-low \
   --workers 5 \

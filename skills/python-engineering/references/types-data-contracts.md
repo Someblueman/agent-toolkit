@@ -13,7 +13,7 @@ Always include `from __future__ import annotations` as the first line of every P
 | **Union Types** | `int | str`, `str | None` | `Union[int, str]`, `Optional[str]` |
 | **Generic Collections** | `list[str]`, `dict[str, int]`, `set[int]`, `tuple[int, ...]` | `typing.List`, `typing.Dict`, `typing.Set`, `typing.Tuple` |
 | **Callable Signatures** | `collections.abc.Callable[[int, str], bool]` | `typing.Callable[[int, str], bool]` |
-| **Self Referencing** | `def clone(self) -> Self:` (`typing.Self`) | `def clone(self: T) -> T:` (verbose TypeVar) |
+| **Self Referencing** | `def clone(self) -> Self:` (`typing.Self`, Python 3.11+; on 3.10 use the existing TypeVar or typing_extensions) | `def clone(self: T) -> T:` (valid for Python 3.10) |
 | **Type Narrowing** | `def is_valid(x: object) -> TypeIs[str]:` (`typing.TypeIs`) | Brittle runtime `isinstance` checks without type narrowing |
 | **Exhaustiveness** | `assert_never(val)` (`typing.Never`, `typing.assert_never`) | `raise NotImplementedError("unhandled")` |
 

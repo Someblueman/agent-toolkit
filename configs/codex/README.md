@@ -35,6 +35,6 @@ The installer compares composed skill content, including interface metadata and 
 
 Inspect a conflict before using `--force`, which replaces conflicting selected items. `--prune` removes only retired items in the ownership record; an edited retired item requires `--force`. Items without an ownership record are never inferred to be obsolete. System skills, plugin caches, and other independent installations are outside this installer's ownership. Do not run concurrent installers for one destination.
 
-The selected list intentionally excludes toolkit drafts and `fanout`, whose standalone tool is not installed by this adapter. Add a skill to `skills.txt` only when its runtime dependencies are ready.
+The selected list includes the user-requested `code-simplification`, `hardware-aware-optimization`, and `profiling-software-performance` drafts. Installation does not establish their behavioral correctness or install optional profiling/compiler dependencies. `fanout` remains excluded because its standalone tool is not installed by this adapter.
 
 The anti-bloat script lives at `skills/pragmatic-engineering/scripts/check_anti_bloat.py` and is installed at `~/.codex/scripts/check_anti_bloat.py` for convenience.

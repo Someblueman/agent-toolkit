@@ -22,15 +22,15 @@ Produce the smallest correct C change or the focused review the user requested. 
   - *Arena/Region allocation*: For complex multi-object graphs or request-scoped lifecycles, pass an explicit arena allocator (`arena_t *arena`) and deallocate the entire arena in a single bulk operation.
   - *Callee-heap allocation*: If a function must allocate heap memory (`malloc`/`calloc`), the function name and documentation must explicitly state caller ownership and the required deallocation function (e.g. `foo_destroy` or `free`).
 - **Single Cleanup Exit Idiom (`goto cleanup;`)**: Use single-exit error handling for multi-resource functions. Declare and initialize all resource handles to `NULL`/zero at the top of the function. On any allocation or system call failure, set an error status and jump to `goto cleanup;`. Deallocate resources in reverse allocation order at the `cleanup:` label before returning.
-- **Encapsulation via Opaque Pointers**: Expose only incomplete struct declarations (`typedef struct engine engine_t;`) in public headers. Define the concrete `struct engine { ... };` exclusively inside the private `.c` implementation file. This preserves ABI stability, hides implementation details, and prevents caller field tampering.
-- **Anti-Abstraction & Rule of Three**: Write concrete functions and direct struct manipulations first. Do NOT introduce function pointer vtables (`struct driver_ops { int (*init)(void); ... };`) or generic callback dispatch layers unless at least 3 distinct concrete implementations exist in the repository or an external plugin interface requires it.
-- **Forbid Small Struct Builders**: For structs with fewer than 5 fields (< 5 fields), forbid builder patterns or multi-stage setter APIs. Use direct struct initialization (`(point_t){ .x = 1.0f, .y = 2.0f }`) or a simple constructor function (`point_create(x, y)`).
+- **API representation**: Use opaque pointers when representation hiding or ABI stability warrants it; plain value structs can be clearer for small internal data.
+- Prefer concrete code; introduce an abstraction when it simplifies a current requirement or expresses a necessary boundary or invariant.
+- Choose direct construction, constructors or builders according to validation needs and call-site clarity, not field count.
 - **Single-Path Execution & Atomic In-Place Refactoring**: When refactoring or updating an interface, data structure, or function, perform a clean in-place replacement and atomically update all call sites, internal usages, and tests in the same change wave. Never introduce forwarding wrapper shims, deprecated struct aliases, or ghost/commented-out legacy code.
 - **Bounded Buffers & Safe String Handling**: Strictly forbid unsafe legacy libc functions: `strcpy`, `strcat`, `gets`, `sprintf`, and unsized `scanf %s`. Mandate bounded replacements: `snprintf` with truncation checking, length-bounded copy operations, or string slices (`str_view_t`).
 - **Integer Overflow Protection**: Prevent integer overflow/wraparound when calculating allocation sizes or array offsets. Use C23 `<stdckdint.h>` (`ckd_mul`, `ckd_add`) or compiler builtins (`__builtin_mul_overflow`, `__builtin_add_overflow`) before calling `malloc` or `realloc`.
 - **C11 Atomics & Concurrency Discipline**: Use `<stdatomic.h>` with the weakest necessary memory ordering (acquire-release for synchronization, relaxed for independent counters). Forbid raw volatile variables for thread synchronization. Always wrap `pthread_cond_wait()` inside a `while (!condition)` predicate check.
-- **Hardware-Aware SIMD & Memory Layout**: Align performance-critical structures to 64-byte cache lines (`alignas(64)`) to avoid false sharing. Prefer Structure-of-Arrays (SoA) over Array-of-Structures (AoS) for vectorized computational kernels. Use `restrict` pointers to enable compiler auto-vectorization.
-- **Zero-Warning Compiler Baseline**: All C code must compile cleanly with zero warnings under `-Wall -Wextra -Werror -pedantic -Wconversion -Wshadow -Wformat=2`.
+- **Hardware layout**: Use measured target-specific alignment and layout. Apply `restrict` only when the actual aliasing contract holds; it is a correctness promise.
+- **Compiler diagnostics**: Follow the target compiler and repository warning policy; enable useful warnings for changed code without introducing unrelated warning or toolchain churn.
 
 ## Verification
 
@@ -78,7 +78,7 @@ Do not hide a pre-existing failure by changing unrelated code. Report the exact 
 
 - Memory ownership contracts, arena allocators, scratchpads, safe `realloc`, and `goto cleanup` idiom: read [references/memory-arenas.md](references/memory-arenas.md).
 - Bounded buffer manipulation, safe string slices (`str_view_t`), integer overflow checks, and format string safety: read [references/buffer-string-safety.md](references/buffer-string-safety.md).
-- Opaque pointer types (`PIMPL`), header include minimalism, compilation units, Rule of Three, and single-path refactoring: read [references/api-headers-architecture.md](references/api-headers-architecture.md).
+- Opaque pointer types (`PIMPL`), header include minimalism, compilation units, Concrete-First Design, and single-path refactoring: read [references/api-headers-architecture.md](references/api-headers-architecture.md).
 - POSIX threads (`pthreads`), C11 atomics (`<stdatomic.h>`), memory orderings, and lock-free SPSC ring buffers: read [references/concurrency-atomics.md](references/concurrency-atomics.md).
 - Cache line alignment, false sharing prevention, AoS vs SoA data layout, SIMD intrinsics (AVX2/NEON), and branchless programming: read [references/performance-simd.md](references/performance-simd.md).
 - Compiler warning baselines, AddressSanitizer, UBSan, TSan, Valgrind, CMake/Make/Meson, and Fast-Path test recipes: read [references/tooling-sanitizers-ci.md](references/tooling-sanitizers-ci.md).

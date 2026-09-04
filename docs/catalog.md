@@ -29,7 +29,7 @@ Status values: `scaffold` (placeholder exists), `draft` (real content, not valid
 | teamwork-preview | `configs/codex/native-skills/teamwork-preview/` | Selected for Codex; imported from the existing personal installation on 2026-09-04 without changing behavior. |
 | workflow | `configs/codex/native-skills/workflow/` | Selected for Codex; imported from the existing personal installation on 2026-09-04 without changing behavior. Requires the external `afk` CLI. |
 
-`configs/codex/skills.txt` is the explicit Codex selection. Draft shared skills and `fanout` remain available in the repository but are not installed into Codex by default.
+`configs/codex/skills.txt` is the explicit Codex selection. The user requested installation of the three draft skills (`code-simplification`, `hardware-aware-optimization`, and `profiling-software-performance`); their draft status remains unchanged. `fanout` is available in the repository but is not installed into Codex by default.
 
 ## External skill ownership
 

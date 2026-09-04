@@ -36,13 +36,8 @@ Assertions are useful diagnostics but may be disabled and are not invariant enfo
 
 ## Module and Instance Boundaries
 
-- **Mandatory Explicit Export Lists on ALL Modules**: Every module in the codebase—libraries, executables, test suites, internal helpers, and CLI entry points—must have an explicit export list (`module Package.Foo (Type(..), func, ...) where`). Implicit exports leak internal implementation details, defeat dead-code elimination, break encapsulation, and risk exposing unvalidated data constructors.
-- **3-Tier Hierarchical Namespace Architecture**:
-  - *Layer 1: Core Domain (`Package.Core.*` / `Package.Domain.*`)*: Houses pure domain types, invariant-enforcing smart constructors, pure business logic, and algebraic models. Zero external I/O, zero database libraries, zero HTTP/network dependencies.
-  - *Layer 2: Storage & Network Adapters (`Package.Storage.*`, `Package.Network.*`)*: Houses database access (PostgreSQL, SQLite, Redis), HTTP client/server adapters, file system I/O, and external wire format mappings.
-  - *Layer 3: Application Wiring & CLI (`Package.CLI.*`, `Package.App.*`, `Main.hs`)*: Houses CLI argument parsing (`optparse-applicative`), configuration loading, adapter instantiation, dependency wiring, and top-level execution loops.
-  - *Unidirectional Layering Rule*: Imports flow unidirectionally from outer layers to inner layers (`CLI` -> `Storage` -> `Core`). Inner domain modules must never import outer adapters or application modules.
-  - *God Module Decomposition*: Decompose monolithic modules exceeding ~500–1000 lines into focused, cohesive submodules following this hierarchical structure.
+- Use explicit exports at public and invariant-enforcing boundaries; preserve reasonable conventions for executable and test modules. Export lists control API visibility, not a blanket guarantee about optimization.
+- Preserve the repository's module structure. Separate pure logic from effects when that clarifies dependencies, without imposing a three-tier namespace. Review large modules for cohesion rather than splitting mechanically.
 - **`Package.Internal.*` Isolation Protocol**:
   - Place raw data constructors, unchecked helper functions, and test-only escape hatches into `Package.Internal.*` or `Package.Foo.Internal` submodules.
   - Public facade modules (`Package` or `Package.Foo`) export only opaque types, smart constructors, and validated operations.
@@ -52,7 +47,7 @@ Assertions are useful diagnostics but may be disabled and are not invariant enfo
 
 ## Anti-Abstraction: Concrete-First Design
 
-- **Rule of Three for Typeclasses**: Define concrete data types and functions first. Do NOT introduce a custom typeclass (`class MonadUserRepo m`, `class StorageBackend s`) unless there are at least 3 distinct concrete implementations in the active repository or an established standard contract (`Aeson.ToJSON`, `Eq`, `Ord`, `Semigroup`) requires it.
+- Prefer concrete code; introduce an abstraction when it simplifies a current requirement or expresses a necessary boundary or invariant.
 - **Records of Functions over Typeclasses**: When dependency injection or interface abstraction is genuinely needed for testing or swapping adapters, prefer a plain record of functions:
   ```haskell
   data UserRepo = UserRepo

@@ -16,7 +16,9 @@ Python\x27s `asyncio` uses a single-threaded cooperative multitasking event loop
 
 ---
 
-## Structured Concurrency with `asyncio.TaskGroup`
+## Structured Concurrency with `asyncio.TaskGroup` (Python 3.11+)
+
+TaskGroup examples require Python 3.11+. For a 3.10 target, retain its established lifecycle/cancellation approach rather than adding an unrequested compatibility layer. Threads primarily help blocking I/O; pure Python CPU work generally needs processes or native code that releases the GIL.
 
 Structured concurrency guarantees that concurrent subtasks have a bounded lifetime tied to a lexical block. When the block exits, all tasks are completed, cancelled, or handled.
 
@@ -25,7 +27,7 @@ Structured concurrency guarantees that concurrent subtasks have a bounded lifeti
    - Swallowed exceptions (lost until task GC).
    - Silent task garbage collection mid-execution.
    - Zombie coroutines lingering after parent requests finish.
-2. **Always Use `asyncio.TaskGroup`**: Use `async with asyncio.TaskGroup() as tg:` to spawn child tasks.
+2. **Use `asyncio.TaskGroup` on 3.11+**: Use `async with asyncio.TaskGroup() as tg:` to spawn child tasks.
 3. **Handle `ExceptionGroup` with `except*`**: In Python 3.11+, catch multiple concurrent exceptions using `except* ExceptionType:`.
 
 ### ❌ ANTI-PATTERN: Unmonitored Fire-and-Forget Tasks

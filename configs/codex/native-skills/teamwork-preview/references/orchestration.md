@@ -87,9 +87,9 @@ Use Codex agent status and bounded waits rather than shell sleeps or cron emulat
 2. On timeout, inspect the live collaboration-agent roster and any durable `progress.md` or command session output; the primary updates the run's `PROGRESS.md` with the observed state.
 3. If a running agent has no observable progress across two checks and is not inside a healthy long-running command, send a focused status request naming the expected next evidence.
 4. If a third check is unchanged or the agent has failed, interrupt it and launch a fresh collaboration-tree replacement from the last inspected handoff or captured collaboration response. The primary records the replacement and reason.
-5. Stop the loop only when the agent returns, is replaced, or new user input changes the run.
+5. Stop when the agent returns, user input changes the run, or the approved attempt/time budget is exhausted. Replacements consume the same budget; a missing required audit remains incomplete.
 
 - Never treat an ordinary long-running command as failure without inspecting its output or session.
 - At a milestone boundary, replace an orchestrator whose context is visibly degraded. Require a structured final response containing completed work, active agents, decisions, evidence, and next steps. If the orchestrator has an explicitly writable coordination directory it may also persist a handoff there. The primary verifies and records the handoff before launching the successor.
 
-Do not mark the whole run blocked merely because one agent fails. Retry, replace, repartition, or continue with unaffected work. Ask the user only when progress needs new authority or a material product decision.
+Stay within the approved attempt/time budget, including replacement auditors and repair waves. When exhausted, report incomplete criteria without lowering the gate. Do not mark the whole run blocked merely because one agent fails. Retry, replace, repartition, or continue with unaffected work. Ask the user only when progress needs new authority or a material product decision.

@@ -42,14 +42,14 @@ Read this for public APIs, error types, trait semantics, crate boundaries, featu
 - Replace ambiguous groups of booleans with named enums or option structs. Keep a boolean when its call-site meaning is already clear.
 - `Option<T>` is appropriate when absence is part of the domain. Replace it with a named type only when several optional states or parameters are ambiguous.
 - **Struct Construction & Builder Ban**:
-  - For structs with fewer than 5 fields (< 5 fields): strictly ban the builder pattern. Use direct struct literal instantiation, `new(...)` constructors, or `Default::default()` with struct update syntax (`Config { port, ..Default::default() }`). Dedicated builder structs add redundant type definitions, allocation/boilerplate overhead, and cognitive complexity for simple structs.
-  - Reserve builder patterns strictly for structs with 5 or more fields (>= 5 fields) that have numerous optional parameters, or types requiring staged fallible validation or compile-time type-state progression.
+  - Choose direct construction, constructors or builders according to validation needs and call-site clarity, not field count.
+  - Choose direct construction, constructors or builders according to validation needs and call-site clarity, not field count.
 - Use `bitflags` or an equivalent vetted representation for interoperable flag sets instead of hand-maintained masks.
 - Prefer static enforcement, then checked construction returning `Result`. An unchecked API is justified only by demonstrated need and must state its safety contract.
 
 ## Traits and conversions
 
-- **Rule of Three for Traits**: Write concrete structs, enums, and methods first. Do not extract a trait or generic parameter unless at least 3 distinct concrete implementations exist in the repository or an established ecosystem contract (e.g. `std::io::Read`, `std::io::Write`, `serde::Serialize`, `tower::Service`) requires it.
+- Prefer concrete code; introduce an abstraction when it simplifies a current requirement or expresses a necessary boundary or invariant.
 - **Anti-Mock Sprawl**: Never extract single-implementation traits solely to generate mock objects with `mockall` or test doubles. Test concrete structs directly or use concrete in-memory doubles.
 - **Ban Speculative Dynamic Dispatch (`dyn Trait`)**: Avoid `dyn Trait` or `Box<dyn Trait>` unless heterogeneous runtime collections or dynamic runtime polymorphism are strictly required. Dynamic dispatch introduces vtable pointer indirection, fat pointers, extra heap allocation, and defeats compiler inlining, dead-code elimination, and devirtualization. Prefer concrete enums or static generics.
 - Implement common traits only when their semantics are honest and useful. In particular, `Copy`, `Default`, ordering, hashing, serialization, and `Send + Sync` are contracts, not decoration.
@@ -79,12 +79,7 @@ Read this for public APIs, error types, trait semantics, crate boundaries, featu
     3. **Target / Platform / Dependency Isolation**: Isolating `no_std` embedded core logic from `std` host code, or segregating heavy native C/FFI bindings and heavy optional dependencies.
     4. **Measured Compilation Barrier**: Verified compilation bottleneck where crate-level caching significantly and measurably reduces build latency.
   - *Ban Speculative Micro-Crates*: Forbid decomposing an application into arbitrary micro-crates (e.g. `app-types`, `app-utils`, `app-core`, `app-models`) without meeting the above criteria.
-- **Codebase Architecture & Unidirectional Layering**:
-  - Enforce strict 3-tier unidirectional layering:
-    - **Layer 1: Core Domain** (`crate::domain` / `core`): Pure domain entities, value objects, business logic, domain state machines. Zero dependencies on database drivers, network libraries, or CLI parsers.
-    - **Layer 2: Storage & Adapters** (`crate::storage` / `crate::adapters` / `infra`): Database access (`sqlx`, `diesel`), network clients, file system I/O, external protocol decoders. Adapts external data models to and from core domain types.
-    - **Layer 3: Application & CLI** (`crate::cli` / `main.rs`): CLI parsing (`clap`), configuration loading, application wiring, top-level error reporting, runtime orchestration.
-  - *Layer Invariant*: Dependencies flow strictly unidirectionally downward: Layer 3 -> Layer 2 -> Layer 1. Lower layers MUST NEVER depend on or import from higher layers (e.g. Core Domain never imports Storage or CLI types).
+- Preserve established module boundaries. Separate pure domain logic from I/O when useful, without imposing three mandatory layers or an unrelated namespace rewrite.
 - Re-export the small set of primary public types at an ergonomic path. Do not flatten every implementation detail into the crate root.
 - Prefer a shallow, coherent module tree. Do not churn an established `foo/mod.rs` versus `foo.rs` convention without a reason.
 - Keep binaries thin when substantial logic benefits from library tests or reuse, but do not create a library solely to satisfy a template.

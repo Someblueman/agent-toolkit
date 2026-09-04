@@ -452,6 +452,9 @@ def main() -> int:
         return 2
 
     results = scan_target(target_path, thresholds)
+    if not results:
+        print("No Python files analyzed; unsupported or empty input", file=sys.stderr)
+        return 2
 
     if args.json:
         print(export_json(results, thresholds))

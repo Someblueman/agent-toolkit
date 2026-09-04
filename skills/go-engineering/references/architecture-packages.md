@@ -1,6 +1,6 @@
 # Architecture, Packages, and Interface Discipline
 
-Read this for package layout, `internal/` boundaries, module design, interface design ("accept interfaces, return structs"), the Rule of Three for interfaces, constructor idioms, and single-path refactoring.
+Read this for package layout, `internal/` boundaries, module design, interface design ("accept interfaces, return structs"), concrete-first design for interfaces, constructor idioms, and single-path refactoring.
 
 ---
 
@@ -41,7 +41,7 @@ repo-root/
 
 ---
 
-## 2. Interface Discipline & The Rule of Three
+## 2. Interface Discipline & Concrete-first design
 
 Go interfaces are **satisfied implicitly**. This unique language capability enables consumer-driven interface definitions rather than producer-driven interface declarations.
 
@@ -55,9 +55,9 @@ Go interfaces are **satisfied implicitly**. This unique language capability enab
    - The package that *implements* the dependency defines and exports only the concrete struct.
 3. **Keep Interfaces Tiny**:
    - Idiomatic Go interfaces contain 1 or 2 methods. Large multi-method interfaces are brittle, difficult to implement, and violate the Single Responsibility Principle.
-4. **The Rule of Three for Interfaces**:
+4. **Concrete-first design for Interfaces**:
    - Write concrete structs first.
-   - Do **NOT** extract an interface or generic type parameter unless at least 3 distinct concrete implementations exist in the codebase, or an established standard library contract (`io.Reader`, `driver.Valuer`, `http.Handler`) requires it.
+   - Prefer concrete code; introduce an abstraction when it simplifies a current requirement or expresses a necessary boundary or invariant.
 5. **Anti-Mock Sprawl Mandate**:
    - Never extract single-implementation interfaces solely to generate mock objects with `mockery`, `gomock`, or `pegomock`.
    - Test concrete structs directly against real in-memory dependencies (e.g., `net/http/httptest`, SQLite in-memory, `os.Pipe`), or write a simple concrete in-memory fake struct co-located with tests.
@@ -70,16 +70,13 @@ Go interfaces are **satisfied implicitly**. This unique language capability enab
 
 | Struct Complexity | Recommended Idiom | Example |
 |---|---|---|
-| **Simple (< 5 fields)** | Direct struct literal instantiation | `cfg := Config{Host: "localhost", Port: 8080}` |
-| **Validated / Invariant (< 5 fields)** | Standard constructor function | `func New(host string, port int) (*Client, error)` |
-| **Complex Config (>= 5 optional fields)** | Functional Options pattern | `func NewServer(addr string, opts ...Option) (*Server, error)` |
+| **Simple** | Direct struct literal instantiation | `cfg := Config{Host: "localhost", Port: 8080}` |
+| **Validated / Invariant** | Standard constructor function | `func New(host string, port int) (*Client, error)` |
+| **Complex optional configuration** | Functional Options pattern | `func NewServer(addr string, opts ...Option) (*Server, error)` |
 
-### Ban on Small Builders (< 5 fields)
+### Construction choices
 
-Builder classes/structs with fluent setter methods (`builder.WithHost("...").WithPort(80).Build()`) are a Java/OOP anti-pattern in Go. For structs with fewer than 5 fields:
-- They introduce redundant struct definitions (`ClientBuilder`).
-- They create cognitive overhead and extra allocations.
-- They conceal required versus optional parameters.
+Prefer struct literals and simple constructors when they make requirements clear. Functional options or builders can help with actual optional configuration or staged validation. Avoid boilerplate that obscures required fields; field count alone is not a decision rule.
 
 ---
 
@@ -109,7 +106,7 @@ When refactoring Go code (renaming methods, modifying struct fields, altering pa
 |---|---|---|
 | **Producer-Side Interfaces** | Declaring `type UserService interface` next to `userService` creates coupling, boilerplate, and prevents caller customization. | Return `*UserService` concrete struct. Let callers define small interfaces if needed. |
 | **Garbage-Can `util` Package** | Becomes an unmaintainable grab-bag of unrelated utilities; causes circular import cycles. | Co-locate utilities with their domain package or create specific domain packages (`stringutil` -> `strcase`). |
-| **Speculative Builders (< 5 fields)** | Creates builder boilerplate, verbose call sites, and unnecessary allocations. | Use direct struct literal instantiation or a simple `New(...)` constructor. |
+| **Speculative Builders ** | Creates builder boilerplate, verbose call sites, and unnecessary allocations. | Use direct struct literal instantiation or a simple `New(...)` constructor. |
 | **Package Stuttering** | `auth.AuthService` produces redundant `auth.AuthService` at call sites. | Name the type `auth.Service` so the call site reads cleanly as `auth.Service`. |
 | **Layered Tier Packages (`models/`, `controllers/`)** | Separates domain logic across horizontal tiers, leading to wide circular dependency issues. | Group by feature/domain: `internal/user`, `internal/order`. |
 
@@ -117,7 +114,7 @@ When refactoring Go code (renaming methods, modifying struct fields, altering pa
 
 ## 6. Concrete Code Comparisons
 
-### Interface Placement & Rule of Three
+### Interface Placement & Concrete-First Design
 
 #### ❌ ANTI-PATTERN: Producer-Side Interface + Speculative Mocking
 ```go

@@ -85,7 +85,7 @@ public class UserServiceImpl implements IUserService {
 ```
 
 #### Diagnostic Rule:
-> **The Rule of Three**: Do not extract an interface or abstraction until you have at least three distinct concrete implementations with proven divergent behaviors.
+> Prefer concrete code. Extract an abstraction when a current boundary, invariant or simplification justifies it; there is no implementation-count quota.
 
 #### Refactored Simplification:
 ```java

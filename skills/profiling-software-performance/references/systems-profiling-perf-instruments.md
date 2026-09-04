@@ -34,10 +34,10 @@ Hardware counters are dedicated registers inside the CPU core that count archite
 | `cycles` | Unhalted core clock cycles consumed | Baseline reference |
 | `instructions` | Total retired architectural instructions | Combined with cycles for IPC |
 | `L1-dcache-loads` | Level-1 data cache read attempts | Memory access intensity |
-| `L1-dcache-load-misses` | Accesses missing L1 (must fetch from L2/L3) | Target: Miss rate $< 3.0\%$ |
-| `LLC-loads` / `LLC-load-misses` | Last Level Cache (L3) accesses and misses (DRAM trip) | Target: Miss rate $< 1.0\%$ |
+| `L1-dcache-load-misses` | Accesses missing L1 (must fetch from L2/L3) | Interpret on the actual CPU/workload |
+| `LLC-loads` / `LLC-load-misses` | Last Level Cache (L3) accesses and misses (DRAM trip) | Interpret on the actual CPU/workload |
 | `branch-instructions` | Direct, indirect, conditional branch instructions | Control flow density |
-| `branch-misses` | Branch target/direction mispredictions (pipeline flush) | Target: Miss rate $< 2.0\%$ |
+| `branch-misses` | Branch target/direction mispredictions (pipeline flush) | Interpret on the actual CPU/workload |
 | `context-switches` | Process/thread preemptions and yields | Target: Low in compute loops |
 | `page-faults` | Virtual memory page mapping allocations/faults | Target: Near zero after warmup |
 
@@ -56,58 +56,7 @@ branch-instructions,branch-misses,context-switches,page-faults \
 
 #### Diagnostic Formula Cheat Sheet
 
-1. **Instructions Per Cycle (IPC)**:
-   $$\text{IPC} = \frac{\text{instructions}}{\text{cycles}}$$
-   - $\text{IPC} \ge 2.0$: **Compute-Bound / Well-Vectorized**. Superscalar pipeline is well-fed.
-   - $0.8 \le \text{IPC} < 2.0$: **Balanced / Intermediate**.
-   - $\text{IPC} < 0.75$: **Memory-Bound or Stalled**. CPU is spending cycles waiting for data or recovering from pipeline flushes.
-
-2. **L1 Data Cache Miss Rate**:
-   $$\text{L1 Miss Rate} = \frac{\text{L1-dcache-load-misses}}{\text{L1-dcache-loads}} \times 100\%$$
-   - $> 5\%$: Significant spatial/temporal locality deficit (e.g. pointer-chasing, non-contiguous matrix stride).
-
-3. **Last Level Cache (LLC / L3) Miss Rate**:
-   $$\text{LLC Miss Rate} = \frac{\text{LLC-load-misses}}{\text{LLC-loads}} \times 100\%$$
-   - LLC misses result in main memory (DRAM) access (~50–100ns / 150–300 CPU cycles latency). If LLC miss rate $> 10\%$, memory bandwidth is likely saturated.
-
-4. **Branch Misprediction Rate**:
-   $$\text{Branch Miss Rate} = \frac{\text{branch-misses}}{\text{branch-instructions}} \times 100\%$$
-   - $> 3\%$: Serious pipeline bubble penalty (15–20 wasted cycles per misprediction). Candidates for branchless arithmetic or lookup tables.
-
----
-
-### 1.3 `perf record` and `perf report` Sampling
-
-Sampling periodically interrupts the CPU (e.g., at 997 Hz) and records the Instruction Pointer (IP) and call stack.
-
-#### Step 1: Compile with Debug Information & Frame Pointers
-Always compile binaries with `-g` (debug symbols) and `-fno-omit-frame-pointer` for clean stack unwinding without heavy DWARF overhead:
-```bash
-clang -O2 -g -fno-omit-frame-pointer -o my_app main.c
-```
-
-#### Step 2: Record Execution Profiles
-```bash
-# -F 997: Sample at 997 Hz (prime number avoids aliasing with periodic loops)
-# -g / --call-graph dwarf: Capture deep call stacks via DWARF (or 'fp' for frame pointers)
-# -- : Target command
-perf record -F 997 --call-graph fp -e cycles -o perf.data -- ./my_app
-```
-
-#### Step 3: Interactive TUI Analysis
-```bash
-# View interactive profile ordered by overhead percentage
-perf report -i perf.data --stdio
-```
-
-#### Step 4: Disassembly Hotspot Annotation
-Within `perf report`, press `a` on any hot function, or run directly:
-```bash
-perf annotate --stdio -i perf.data my_hot_function
-```
-`perf annotate` shows percentage of CPU cycles spent on individual assembly instructions (e.g. identifying a specific `mov` stalling on cache miss).
-
----
+Interpret IPC, cache misses and branch misses together with CPU-specific event definitions, sampling coverage and the workload. A low IPC can reflect memory latency, dependency chains, contention or other stalls; high IPC does not establish vectorization or a compute bottleneck. Cache miss rates alone do not establish bandwidth saturation. Compare relevant counters before and after a measured change rather than applying universal numeric gates.
 
 ## 2. Flamegraph Workflows
 
@@ -230,11 +179,11 @@ cat sample_output.txt | head -n 40
                 │                                       │
                 ▼                                       ▼
     Run PMU stat (IPC check)               Trace System Events
-         IPC < 0.8:                              │
+         Stall evidence:                              │
          ├─ High L1 Miss: Data Locality / SoA    ├─ Mutex Contention (Lock-free / SPSC)
          ├─ High LLC Miss: DRAM Bandwidth        ├─ Disk I/O Wait (mmap / Async I/O)
          └─ High Branch Miss: Branchless / CMOV  └─ Network Socket Wait (Epoll / Kqueue)
-         IPC > 2.0:
+         Compute evidence:
          └─ Algorithm Complexity (O(N^2) -> O(N))
             or SIMD Vectorization Opportunity
 ```

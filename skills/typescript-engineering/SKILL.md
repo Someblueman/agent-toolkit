@@ -23,8 +23,8 @@ This skill owns TypeScript language, API, runtime-boundary, project-configuratio
 
 - Keep `strict` enabled; enable it for new projects. Never loosen compiler safety to make a change pass.
 - Design flat, cohesive feature modules: colocate domain models, business logic, and direct database/I/O queries in feature modules rather than scattering across redundant layers. Do not create multi-layer service/manager/repository wrappers (`Controller -> Service -> Manager -> Repository -> DAO`) where intermediate layers merely forward calls without transformation.
-- Apply the Rule of Three: write concrete logic and types first; do not extract an interface, abstract class, or generic parameter unless at least 3 distinct concrete implementations exist in the repository or an established framework contract requires it.
-- Ban builder patterns for simple objects or interfaces (< 5 fields); use direct object literals with `satisfies` or typed parameter objects.
+- Prefer concrete code; introduce an abstraction when it simplifies a current requirement or expresses a necessary boundary or invariant.
+- Choose direct construction, constructors or builders according to validation needs and call-site clarity, not field count.
 - Perform single-path atomic in-place refactoring: cleanly replace old implementations and atomically update all call sites, internal usages, and tests in the same change wave. Never introduce forwarding shims, zombie decoders, preemptive `@deprecated` staging, paranoid dual-writing, ghost code, or array/prototype monkey-patching.
 - Treat external data as `unknown`. Parse or validate it once at the trust boundary, then pass a trusted domain type inward. Type assertions, type declarations, and generics provide no runtime validation.
 - Treat persisted, queued, cached, or cross-process data that can outlive one process or deployment as a runtime protocol. Decode a supported version, validate it, migrate explicitly when required, and only then construct the current domain type. Do not let an in-memory TypeScript refactor silently redefine durable data.
@@ -85,7 +85,7 @@ Never claim a performance improvement from code inspection alone. Type-level sim
 ## 6. Reject these anti-patterns
 
 - Multi-layer service/manager/repository wrappers (`Controller -> Service -> Manager -> Repository -> DAO`) that merely forward parameters without adding real domain logic or distinct polymorphism.
-- Speculative generic helper abstractions (custom type-level metaprogramming toolkits, complex recursive mapped types) and builder classes for simple objects (< 5 fields) when direct object literals with `satisfies` suffice.
+- Choose direct construction, constructors or builders according to validation needs and call-site clarity, not field count.
 - Array monkey-patching, prototype pollution, or mutating global objects and prototypes (`Array.prototype`, `Object.prototype`) with custom helper methods.
 - Shim multiplication (retaining deprecated forwarding wrappers), zombie decoders/dual-format fallbacks without explicit multi-version requirements, preemptive `@deprecated` staging, paranoid dual-writing, and ghost code retention.
 - `JSON.parse(text) as T`, `process.env.X as Mode`, or database rows asserted directly into domain types without validation.

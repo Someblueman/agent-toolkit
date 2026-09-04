@@ -21,14 +21,13 @@ Read this when designing Python modules, classes, functions, public interfaces, 
 
 ---
 
-## Rule of Three for Classes, Protocols, and ABCs
+## Concrete-First Design for Classes, Protocols, and ABCs
 
 Abstract Base Classes (`abc.ABC`) and static protocols (`typing.Protocol`) define structural interfaces. In Python, structural subtyping (duck typing) means you rarely need to declare an interface upfront.
 
-### The Rule of Three Rule
-1. **Concrete First**: Write concrete classes and functions directly. Do not create an ABC or Protocol when only 1 or 2 concrete implementations exist in the repository.
-2. **Threshold of 3**: Extract an abstract base class or `Protocol` **only** when at least 3 distinct concrete implementations exist in the repository (e.g. `PostgresStorage`, `S3Storage`, `DiskStorage`) or an established framework contract (e.g. standard library `os.PathLike`, `collections.abc.Sequence`) strictly requires it.
-3. **Anti-Mock Sprawl**: Strictly forbid extracting a single-implementation Protocol or ABC solely to enable mocking with `unittest.mock.MagicMock` in unit tests. Test concrete classes directly or create a simple concrete in-memory fake.
+### Choosing a boundary
+
+Prefer concrete classes and functions. Introduce a Protocol or ABC when it expresses a useful current contract, not to reach a numeric quota or generate elaborate mocks. Keep test doubles focused on behavior at that boundary.
 
 ### ❌ ANTI-PATTERN: Speculative Single-Implementation Protocol & Mock Sprawl
 
@@ -103,13 +102,12 @@ def test_user_service_registration() -> None:
 
 ---
 
-## Ban on Small Builders (< 5 fields)
+## Construction choices
 
 The Builder Pattern is a design pattern from languages lacking named keyword arguments and default values (e.g. older Java). In Python, keyword arguments, keyword-only parameters, and dataclasses render small builder classes completely redundant.
 
 ### Struct Construction Rules
-- **Structs with < 5 fields**: Strictly ban builder classes. Instantiate directly using `@dataclass(slots=True, kw_only=True)` with default arguments, standard `__init__`, or factory class methods (`from_env()`, `from_config()`).
-- **Structs with >= 5 fields**: Use builder patterns or staged validation **only** when constructing the object requires multi-step stateful validation across distinct boundaries.
+- Choose direct construction, constructors or builders according to validation needs and call-site clarity, not field count.
 
 ### ❌ ANTI-PATTERN: Verbose Builder for Simple Data Container
 

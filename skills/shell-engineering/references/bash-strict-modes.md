@@ -6,7 +6,7 @@ Read this guide when setting up shell execution flags, handling errors determini
 
 ## 1. The Canonical Strict Mode Header
 
-Every production Bash script must start with the canonical strict mode preamble:
+One possible Bash preamble follows. Choose flags for the script's failure contract and use a changed IFS only when its parsing needs it:
 
 ```bash
 #!/usr/bin/env bash
@@ -23,7 +23,7 @@ set -eu
 
 ### Breakdown of Strict Mode Flags
 
-| Flag | Name | Operational Invariant | Why It Is Mandatory |
+| Flag | Name | Operational Invariant | When It Helps |
 |---|---|---|---|
 | `-e` | `errexit` | Aborts execution immediately if any command returns a non-zero exit status (with specific context exceptions). | Prevents cascading corruption where subsequent commands execute on top of failed preceding steps. |
 | `-u` | `nounset` | Treats unset or uninitialized variables and parameters as fatal errors during expansion. | Catches typos (e.g. `rm -rf "$TARGET_DR/data"` when variable is named `TARGET_DIR`), preventing catastrophic unintended deletions. |
@@ -34,7 +34,7 @@ set -eu
 
 ## 2. Common `errexit` Pitfalls & Safe Workarounds
 
-While `set -e` is essential, standard shell behavior contains subtle edge cases where `-e` can either silently deactivate or unexpectedly abort execution.
+When `set -e` is enabled, standard shell behavior contains subtle edge cases where `-e` can either silently deactivate or unexpectedly abort execution.
 
 ### Pitfall 1: Arithmetic Evaluation Returning Zero
 In Bash, `(( expr ))` returns exit status `1` (failure) if the arithmetic expression evaluates to `0`. Under `set -e`, this immediately crashes the script.
@@ -138,6 +138,7 @@ SCRATCH_DIR=""
 cleanup() {
   # Capture the incoming exit code before executing cleanup commands
   local exit_code=$?
+  trap - EXIT
   
   # Remove temporary directory if created
   if [[ -n "${SCRATCH_DIR:-}" && -d "$SCRATCH_DIR" ]]; then
@@ -156,7 +157,10 @@ cleanup() {
 }
 
 # Trap EXIT (normal termination) and common termination signals
-trap cleanup EXIT INT TERM HUP
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 main() {
   # Allocate atomic scratch directory

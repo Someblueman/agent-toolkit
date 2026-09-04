@@ -44,7 +44,10 @@ stack build <pkg-name>:test:<suite-name> --no-run-tests
 
 # Targeted test filtering by pattern / test name (Tasty & Hspec)
 cabal test <pkg-name>:<suite-name> --test-options="-m \"<pattern>\""
-cabal test <pkg-name>:<suite-name> --test-options="--match=\"<pattern>\""
+# Hspec
+cabal test <pkg-name>:<suite-name> --test-options='--match pattern'
+# Tasty
+cabal test <pkg-name>:<suite-name> --test-options='-p pattern'
 stack test <pkg-name>:<suite-name> --test-arguments="-m \"<pattern>\""
 ```
 
@@ -103,3 +106,5 @@ For Nix-managed projects, preserve the pinned shell/build inputs and run the rep
 - Read the final passed/failed/skipped summary. A non-strict zero exit with skips means “no observed failures,” not “all checks passed.”
 - A strict invocation with every check disabled is reported as incomplete rather than meaningful acceptance evidence.
 - Benchmarks and clean unpacked source-archive builds are intentionally repository-specific and remain outside this fallback script.
+
+Filter syntax: [Hspec options](https://hspec.github.io/options.html) uses `--match`; [Tasty patterns](https://github.com/UnkindPartition/tasty#patterns) uses `-p`/`--pattern`. Inspect the actual runner help and ensure the filter executes tests.

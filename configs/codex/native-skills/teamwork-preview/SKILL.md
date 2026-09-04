@@ -58,4 +58,4 @@ Finish with a concise handoff separating:
 - remaining uncertainty or rejected criteria;
 - repository and publication state.
 
-If a gate fails, return the complete actionable findings to a fresh repair wave. If the team cannot satisfy a criterion within the agreed bounds, report partial completion honestly rather than weakening the criterion or fabricating success.
+If a gate fails, return its actionable findings for repair within the approved attempt/time budget. Auditor replacement, crashed lanes and fresh gates consume that same budget; do not reset it by spawning a replacement. If bounds were not agreed, propose them before starting the team. If the team cannot satisfy a criterion within the agreed bounds, report partial completion honestly rather than weakening the criterion or fabricating success.

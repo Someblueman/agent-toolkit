@@ -11,14 +11,14 @@ import argparse
 import json
 import re
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
-def parse_ghc_prof(prof_text: str) -> Dict[str, Any]:
+def parse_ghc_prof(prof_text: str) -> dict[str, Any]:
     """Parse GHC .prof file contents into structured metadata and cost-centre tables."""
     lines = prof_text.splitlines()
 
-    metadata: Dict[str, Any] = {
+    metadata: dict[str, Any] = {
         "title": "",
         "command": "",
         "total_time_secs": 0.0,
@@ -28,6 +28,7 @@ def parse_ghc_prof(prof_text: str) -> Dict[str, Any]:
         "total_alloc_bytes": 0,
     }
 
+    saw_time = saw_alloc = False
     # Extract header metadata
     for i, line in enumerate(lines[:30]):
         stripped = line.strip()
@@ -40,6 +41,7 @@ def parse_ghc_prof(prof_text: str) -> Dict[str, Any]:
                 stripped,
             )
             if match:
+                saw_time = True
                 time_str, ticks_str, us_str, cores_str = match.groups()
                 metadata["total_time_secs"] = float(time_str) if time_str else 0.0
                 metadata["total_ticks"] = int(ticks_str) if ticks_str else 0
@@ -49,13 +51,14 @@ def parse_ghc_prof(prof_text: str) -> Dict[str, Any]:
             # Example: total alloc = 852,120,448 bytes  (excludes profiling overheads)
             match = re.search(r"total alloc\s*=\s*([\d,]+)\s*bytes", stripped)
             if match:
+                saw_alloc = True
                 alloc_str = match.group(1).replace(",", "")
                 metadata["total_alloc_bytes"] = int(alloc_str)
 
     # Find Top Cost Centres Summary Table
     # Header format: COST CENTRE          MODULE           SRC                       %time %alloc
-    top_summary: List[Dict[str, Any]] = []
-    tree_nodes: List[Dict[str, Any]] = []
+    top_summary: list[dict[str, Any]] = []
+    tree_nodes: list[dict[str, Any]] = []
 
     in_summary_table = False
     in_tree_table = False
@@ -66,7 +69,9 @@ def parse_ghc_prof(prof_text: str) -> Dict[str, Any]:
             continue
 
         # Check for summary section header
-        if re.match(r"^COST CENTRE\s+MODULE\s+SRC\s+%time\s+%alloc\s*$", line_str.strip()):
+        if re.match(
+            r"^COST CENTRE\s+MODULE\s+SRC\s+%time\s+%alloc\s*$", line_str.strip()
+        ):
             in_summary_table = True
             in_tree_table = False
             continue
@@ -76,7 +81,10 @@ def parse_ghc_prof(prof_text: str) -> Dict[str, Any]:
             in_summary_table = False
             in_tree_table = False
             continue
-        if re.match(r"^COST CENTRE\s+MODULE\s+SRC\s+no\.\s+entries\s+%time\s+%alloc\s+%time\s+%alloc\s*$", line_str.strip()):
+        if re.match(
+            r"^COST CENTRE\s+MODULE\s+SRC\s+no\.\s+entries\s+%time\s+%alloc\s+%time\s+%alloc\s*$",
+            line_str.strip(),
+        ):
             in_summary_table = False
             in_tree_table = True
             continue
@@ -86,7 +94,7 @@ def parse_ghc_prof(prof_text: str) -> Dict[str, Any]:
             if line_str.strip().startswith("COST CENTRE") or "individual" in line_str:
                 in_summary_table = False
                 continue
-            
+
             # Format: <name> <module> <src> <%time> <%alloc>
             match = re.match(
                 r"^\s*(\S+)\s+(\S+)\s+(.+?)\s+([\d\.]+)\s+([\d\.]+)\s*$",
@@ -94,13 +102,15 @@ def parse_ghc_prof(prof_text: str) -> Dict[str, Any]:
             )
             if match:
                 cc, mod, src, pct_time, pct_alloc = match.groups()
-                top_summary.append({
-                    "cost_centre": cc,
-                    "module": mod,
-                    "src": src.strip(),
-                    "time_percent": float(pct_time),
-                    "alloc_percent": float(pct_alloc),
-                })
+                top_summary.append(
+                    {
+                        "cost_centre": cc,
+                        "module": mod,
+                        "src": src.strip(),
+                        "time_percent": float(pct_time),
+                        "alloc_percent": float(pct_alloc),
+                    }
+                )
 
         elif in_tree_table:
             # Format with indentation indicating tree depth
@@ -110,22 +120,34 @@ def parse_ghc_prof(prof_text: str) -> Dict[str, Any]:
                 line_str,
             )
             if match:
-                cc, mod, src, no_id, entries, ind_t, ind_a, inh_t, inh_a = match.groups()
-                tree_nodes.append({
-                    "depth": indent,
-                    "cost_centre": cc,
-                    "module": mod,
-                    "src": src.strip(),
-                    "id": int(no_id),
-                    "entries": int(entries),
-                    "individual_time_percent": float(ind_t),
-                    "individual_alloc_percent": float(ind_a),
-                    "inherited_time_percent": float(inh_t),
-                    "inherited_alloc_percent": float(inh_a),
-                })
+                cc, mod, src, no_id, entries, ind_t, ind_a, inh_t, inh_a = (
+                    match.groups()
+                )
+                tree_nodes.append(
+                    {
+                        "depth": indent,
+                        "cost_centre": cc,
+                        "module": mod,
+                        "src": src.strip(),
+                        "id": int(no_id),
+                        "entries": int(entries),
+                        "individual_time_percent": float(ind_t),
+                        "individual_alloc_percent": float(ind_a),
+                        "inherited_time_percent": float(inh_t),
+                        "inherited_alloc_percent": float(inh_a),
+                    }
+                )
+
+    if (
+        not metadata["title"]
+        or not saw_time
+        or not saw_alloc
+        or not (top_summary or tree_nodes)
+    ):
+        raise ValueError("Unsupported, incomplete, or empty GHC profile")
 
     # Identify Anomalies / Space Leaks
-    anomalies: List[str] = []
+    anomalies: list[str] = []
     for item in top_summary:
         # High allocation (> 40%) but low computation time (< 10%) often signals thunk allocation churn / space leak
         if item["alloc_percent"] >= 40.0 and item["time_percent"] <= 10.0:
@@ -146,19 +168,25 @@ def parse_ghc_prof(prof_text: str) -> Dict[str, Any]:
     }
 
 
-def print_report(data: Dict[str, Any]) -> None:
+def print_report(data: dict[str, Any]) -> None:
     """Print formatted summary tables and diagnosis to terminal."""
     meta = data["metadata"]
     print("=" * 72)
     print("GHC PROFILING REPORT ANALYSIS")
-    print(f"Total CPU Time:   {meta['total_time_secs']:.3f} seconds ({meta['total_ticks']} ticks @ {meta['tick_interval_us']}us, {meta['cores']} cores)")
-    print(f"Total Allocation: {meta['total_alloc_bytes']:,} bytes ({meta['total_alloc_bytes'] / (1024*1024):.2f} MiB)")
+    print(
+        f"Total CPU Time:   {meta['total_time_secs']:.3f} seconds ({meta['total_ticks']} ticks @ {meta['tick_interval_us']}us, {meta['cores']} cores)"
+    )
+    print(
+        f"Total Allocation: {meta['total_alloc_bytes']:,} bytes ({meta['total_alloc_bytes'] / (1024 * 1024):.2f} MiB)"
+    )
     print("=" * 72)
 
     top_summary = data["top_summary"]
     if top_summary:
         print("\n=== TOP COST CENTRES BY RESOURCE USAGE ===")
-        print(f"{'COST CENTRE':<22} | {'MODULE':<12} | {'% TIME':<8} | {'% ALLOC':<8} | {'SOURCE'}")
+        print(
+            f"{'COST CENTRE':<22} | {'MODULE':<12} | {'% TIME':<8} | {'% ALLOC':<8} | {'SOURCE'}"
+        )
         print("-" * 72)
         for item in top_summary[:15]:
             print(
@@ -172,7 +200,9 @@ def print_report(data: Dict[str, Any]) -> None:
         for alert in anomalies:
             print(f"[*] {alert}")
     else:
-        print("\n[+] Resource distribution appears balanced across cost centres.")
+        print(
+            "\n[+] No heuristic alerts; this does not establish balanced resource use."
+        )
     print("=" * 72)
 
 
@@ -185,7 +215,8 @@ def main() -> int:
         help="Path to GHC profiling output file (e.g. Main.prof)",
     )
     parser.add_argument(
-        "--json-out", "-j",
+        "--json-out",
+        "-j",
         type=str,
         default=None,
         help="Path to export parsed report in JSON format",
@@ -200,7 +231,11 @@ def main() -> int:
         print(f"Error opening '{args.prof_file}': {e}", file=sys.stderr)
         return 1
 
-    parsed = parse_ghc_prof(content)
+    try:
+        parsed = parse_ghc_prof(content)
+    except ValueError as exc:
+        print(f"Invalid profile: {exc}", file=sys.stderr)
+        return 2
     print_report(parsed)
 
     if args.json_out:

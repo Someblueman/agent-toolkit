@@ -28,6 +28,9 @@ class InstallTest(unittest.TestCase):
         self.write("configs/codex/skills/example/openai.yaml", "interface: {}\n")
         self.write("skills/example/SKILL.md", "example\n")
         self.write("skills/pragmatic-engineering/scripts/check_anti_bloat.py", "pass\n")
+        self.write(
+            "skills/pragmatic-engineering/scripts/test_check_anti_bloat.py", "pass\n"
+        )
 
     def write(self, name, content):
         path = self.repo / name

@@ -45,28 +45,28 @@ class TestCheckAntiBloat(unittest.TestCase):
         violations = check_file(file_path)
         self.assertEqual(violations, [])
 
-    def test_file_loc_exceeded_flags_violation(self):
+    def test_file_loc_exceeded_reports_review_finding(self):
         file_path = self.dir_path / "oversized.py"
         file_path.write_text("x = 1\n" * 501)
         violations = check_file(file_path)
         self.assertEqual(len(violations), 1)
-        self.assertIn("exceeds 500 LOC ceiling", violations[0].message)
+        self.assertIn("exceeds 500 LOC review threshold", violations[0].message)
         self.assertEqual(violations[0].code, "FILE_LENGTH_EXCEEDED")
         self.assertEqual(violations[0].line_count, 501)
 
-    def test_smoke_in_filename_flags_violation(self):
+    def test_smoke_in_filename_is_allowed(self):
         file_path = self.dir_path / "run-smoke.mjs"
         file_path.write_text("console.log('smoke test');\n")
         violations = check_file(file_path)
-        self.assertTrue(any(v.code == "SMOKE_TEST_SCRIPT" for v in violations))
+        self.assertEqual(violations, [])
 
-    def test_smoke_in_path_flags_violation(self):
+    def test_smoke_in_path_is_allowed(self):
         smoke_dir = self.dir_path / "smoke_tests"
         smoke_dir.mkdir()
         file_path = smoke_dir / "runner.py"
         file_path.write_text("print('run')\n")
         violations = check_file(file_path)
-        self.assertTrue(any(v.code == "SMOKE_TEST_SCRIPT" for v in violations))
+        self.assertEqual(violations, [])
 
     def test_rust_file_with_external_mod_tests_passes(self):
         file_path = self.dir_path / "lib.rs"
@@ -289,9 +289,9 @@ class TestCheckAntiBloat(unittest.TestCase):
         violations = scan_paths([self.dir_path])
         codes = [v.code for v in violations]
         self.assertIn("FILE_LENGTH_EXCEEDED", codes)
-        self.assertIn("SMOKE_TEST_SCRIPT", codes)
+        self.assertNotIn("SMOKE_TEST_SCRIPT", codes)
         self.assertIn("INLINE_TEST_EXCEEDED", codes)
-        self.assertEqual(len(violations), 3)
+        self.assertEqual(len(violations), 2)
 
     def test_cli_execution_with_clean_directory(self):
         clean_dir = self.dir_path / "clean_dir"
@@ -310,16 +310,16 @@ class TestCheckAntiBloat(unittest.TestCase):
     def test_cli_execution_with_violations(self):
         dirty_dir = self.dir_path / "dirty_dir"
         dirty_dir.mkdir()
-        (dirty_dir / "smoke_runner.py").write_text("print('smoke')\n")
+        (dirty_dir / "large.py").write_text("x = 1\n" * 501)
 
         script_path = SCRIPT_DIR / "check_anti_bloat.py"
         result = subprocess.run(
-            [sys.executable, str(script_path), str(dirty_dir)],
+            [sys.executable, str(script_path), "--strict", str(dirty_dir)],
             capture_output=True,
             text=True,
         )
         self.assertEqual(result.returncode, 1)
-        self.assertIn("SMOKE_TEST_SCRIPT", result.stderr + result.stdout)
+        self.assertIn("FILE_LENGTH_EXCEEDED", result.stderr + result.stdout)
 
     def test_scan_paths_in_tmp_parent_directory_scans_subdirectories(self):
         tmp_parent = Path(tempfile.gettempdir()) / f"bloat_test_tmp_{os.getpid()}"
@@ -343,8 +343,7 @@ class TestCheckAntiBloat(unittest.TestCase):
 
         smoke_file = fake_base / "tests" / "smoke_runner.py"
         violations_smoke = check_file(smoke_file, base_path=fake_base)
-        self.assertEqual(len(violations_smoke), 1)
-        self.assertEqual(violations_smoke[0].code, "SMOKE_TEST_SCRIPT")
+        self.assertEqual(violations_smoke, [])
 
     def test_rust_lifetimes_and_char_escapes_handled_cleanly(self):
         rust_code = (

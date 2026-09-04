@@ -10,7 +10,7 @@ When modifying existing code in an internal codebase, always execute a clean in-
 3. Update existing tests to reflect the new contract.
 4. Delete obsolete code paths, legacy decoders, and unused helpers immediately.
 
-Do not introduce transitional states, fallback decoders, or compatibility wrappers unless the user has explicitly requested backwards compatibility.
+Do not introduce speculative transitional states or wrappers. Establish published API, durable-data and cross-process contracts first; preserve or migrate those when required by the current system.
 
 ## 2. Forbidden Anti-Patterns Catalog
 
@@ -78,7 +78,7 @@ def fetch_user(user_id: str):
 
 ## 3. When Backwards Compatibility IS Required
 
-Preserve backwards compatibility ONLY when:
+Examples of contracts that can require compatibility or migration:
 1. The repository is a published library (e.g. crates.io, npm, PyPI) with external semver commitments.
 2. The user explicitly prompts: "Ensure backwards compatibility with format X."
 3. The data format is persisted in durable, long-term external storage that cannot be migrated in-place.

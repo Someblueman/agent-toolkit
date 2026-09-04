@@ -49,13 +49,13 @@ Sources: [discriminated unions and exhaustiveness](https://www.typescriptlang.or
 
 ## 3. Choose the simplest type mechanism that preserves the relationship
 
-### Anti-abstraction and the Rule of Three
+### Anti-abstraction and concrete-first design
 
 Write concrete logic and types first. Choose the simplest concrete implementation that meets current requirements.
 
-- **Rule of Three for Abstractions**: Do not extract an interface, abstract class, or generic parameter unless at least 3 distinct concrete implementations exist in the repository or an established framework contract requires it.
+- Prefer concrete code; introduce an abstraction when it simplifies a current requirement or expresses a necessary boundary or invariant.
 - **Ban Speculative Generic Helper Abstractions**: Avoid implementing custom type-level metaprogramming libraries or complex recursive utility types (e.g., `DeepPartial`, `NestedKeyOf`, custom type-gymnastics combinators) when standard TypeScript types and concrete functions solve the immediate requirement.
-- **Ban Builder Patterns for Simple Objects (< 5 fields)**: Do not create builder classes or fluent setters for simple data structures or interfaces with fewer than 5 fields. Use direct object literals typed with `satisfies` or simple parameter objects. Builders introduce unnecessary class boilerplate, mutable state, and runtime overhead without providing type safety gains over object literals.
+- Choose direct construction, constructors or builders according to validation needs and call-site clarity, not field count.
 
 ### Interfaces and aliases
 

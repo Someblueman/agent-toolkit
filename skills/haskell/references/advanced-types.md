@@ -48,7 +48,7 @@ GHC assigns each parameter a role:
 
 ## Classes, Constraints, and Coherence
 
-- **Rule of Three for Typeclasses**: Define concrete data types and functions first. Do NOT introduce a custom typeclass (`class MonadUserRepo m`, `class StorageBackend s`, `class Entity a`) unless there are at least 3 distinct concrete implementations in the active repository or an established standard contract (`Aeson.ToJSON`, `Eq`, `Ord`, `Semigroup`, `Monoid`) requires it. Speculative typeclasses with only 1 or 2 implementations introduce dictionary overhead, type inference complexity, and unnecessary abstraction layers.
+- Prefer concrete code; introduce an abstraction when it simplifies a current requirement or expresses a necessary boundary or invariant.
 - **Records of Functions over Speculative Typeclasses**: Prefer passing concrete records of functions (`data UserRepo = UserRepo { findUser :: UserId -> IO (Maybe User) }`) over typeclass dictionaries or multi-parameter typeclasses with functional dependencies. Records are simple, inspectable, and mockable without complex type-level machinery.
 - **Monad Simplicity over Effect Abstraction**: Ban speculative custom monad transformer stacks (`ReaderT C (ExceptT E (StateT S IO))`) and extensible effect frameworks (Polysemy, Freer, Eff) for standard application code. Default to concrete `ReaderT Env IO` or plain functions with explicit environment parameters.
 - Keep constraints no stronger than needed, but do not conceal essential laws behind a weak standard class.

@@ -3,8 +3,8 @@
 check_anti_bloat.py - Automated anti-bloat guardrail checker.
 
 Enforces:
-1. Hard file length ceiling (maximum 500 LOC per file).
-2. Ban on standalone smoke test scripts / paths (*smoke* in filename or path).
+1. File length review threshold (default 500 LOC).
+2. No filename-based test restrictions.
 3. Hard inline test budget in Rust files (maximum 150 LOC for inline mod tests).
 
 Returns exit code 0 when clean and exit code 1 with actionable violation messages.
@@ -319,30 +319,6 @@ def check_file(
     path = Path(file_path)
     violations: List[Violation] = []
 
-    # 1. Ban standalone smoke test scripts / paths (*smoke* in filename or relative path)
-    if base_path is not None:
-        try:
-            rel = path.relative_to(base_path)
-            parts_to_check = rel.parts
-        except ValueError:
-            parts_to_check = path.parts
-    else:
-        try:
-            rel = path.relative_to(Path.cwd())
-            parts_to_check = rel.parts
-        except ValueError:
-            parts_to_check = path.parts
-
-    if any("smoke" in part for part in [p.lower() for p in parts_to_check]):
-        violations.append(
-            Violation(
-                file_path=path,
-                code="SMOKE_TEST_SCRIPT",
-                message=f"Standalone smoke test script / path detected: '{path.name}'. Use focused unit tests instead.",
-                line_count=0,
-            )
-        )
-
     try:
         raw_bytes = path.read_bytes()
     except Exception:
@@ -366,7 +342,7 @@ def check_file(
             Violation(
                 file_path=path,
                 code="FILE_LENGTH_EXCEEDED",
-                message=f"File exceeds {max_file_loc} LOC ceiling: {total_loc} lines (limit: {max_file_loc}). Decompose into modular submodules.",
+                message=f"File exceeds {max_file_loc} LOC review threshold: {total_loc} lines (limit: {max_file_loc}). Decompose into modular submodules.",
                 line_count=total_loc,
             )
         )
@@ -448,11 +424,12 @@ def run_self_tests() -> int:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Automated anti-bloat guardrail checker (500 LOC per file, 150 LOC inline tests, ban smoke scripts)."
+        description="Review file and inline test size; use --strict only for project-enforced limits."
     )
     parser.add_argument("paths", nargs="*", default=["."], help="Paths (files or directories) to check.")
     parser.add_argument("--max-file-loc", type=int, default=DEFAULT_MAX_FILE_LOC, help=f"Max file LOC (default: {DEFAULT_MAX_FILE_LOC}).")
     parser.add_argument("--max-inline-test-loc", type=int, default=DEFAULT_MAX_INLINE_TEST_LOC, help=f"Max inline test LOC (default: {DEFAULT_MAX_INLINE_TEST_LOC}).")
+    parser.add_argument("--strict", action="store_true", help="Fail on thresholds explicitly enforced by the project")
     parser.add_argument("--self-test", action="store_true", help="Run self-tests and exit.")
 
     args = parser.parse_args(argv)
@@ -461,13 +438,13 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     violations = scan_paths([Path(p) for p in args.paths], max_file_loc=args.max_file_loc, max_inline_test_loc=args.max_inline_test_loc)
     if violations:
-        print(f"FAILED: Found {len(violations)} anti-bloat violation(s):\n", file=sys.stderr)
+        print(f"REVIEW: Found {len(violations)} anti-bloat violation(s):\n", file=sys.stderr)
         for v in violations:
             print(f"  ❌ {v}", file=sys.stderr)
-        print("\nPlease fix violations by decomposing files > 500 LOC, extracting inline tests > 150 LOC, or removing smoke scripts.", file=sys.stderr)
-        return 1
+        print("\nReview cohesion and test placement; do not force unrelated restructuring.", file=sys.stderr)
+        return 1 if args.strict else 0
 
-    print("✅ Anti-bloat checks passed: all files conform to LOC ceilings and anti-bloat rules.")
+    print("✅ Anti-bloat checks passed: all files conform to LOC review thresholds and anti-bloat rules.")
     return 0
 
 

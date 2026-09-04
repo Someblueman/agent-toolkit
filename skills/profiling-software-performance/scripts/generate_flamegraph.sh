@@ -79,7 +79,7 @@ if [[ -z "$INPUT_FILE" || -z "$OUTPUT_FILE" ]]; then
     exit 1
 fi
 
-if [[ ! -f "$INPUT_FILE" ]]; then
+if [[ "$INPUT_FILE" != "-" && ! -f "$INPUT_FILE" ]]; then
     echo "Error: Input file '$INPUT_FILE' does not exist." >&2
     exit 1
 fi
@@ -87,6 +87,11 @@ fi
 # Create temporary directory for intermediate files
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
+
+if [[ "$INPUT_FILE" == "-" ]]; then
+    INPUT_FILE="$TMP_DIR/stdin.txt"
+    cat > "$INPUT_FILE"
+fi
 
 COLLAPSED_STACKS="$TMP_DIR/collapsed.txt"
 
@@ -189,6 +194,7 @@ fi
 python3 - << 'PY_RENDER_EOF' "$COLLAPSED_STACKS" "$OUTPUT_FILE" "$TITLE" "$COLOR_PALETTE" "$SVG_WIDTH"
 import sys
 import hashlib
+import html
 
 in_path = sys.argv[1]
 out_path = sys.argv[2]
@@ -284,7 +290,8 @@ svg_lines.append('  #details { font-size: 12px; fill: #555; text-anchor: middle;
 svg_lines.append('</style>')
 svg_lines.append('<script type="text/ecmascript">')
 svg_lines.append('<![CDATA[')
-svg_lines.append('function showInfo(elem, name, samples, pct) {')
+svg_lines.append('function showInfo(elem) {')
+svg_lines.append('  var name = elem.getAttribute("data-name"), samples = elem.getAttribute("data-samples"), pct = elem.getAttribute("data-pct");')
 svg_lines.append('  var d = document.getElementById("details");')
 svg_lines.append('  if (d) { d.textContent = "Function: " + name + " | Samples: " + samples + " (" + pct + "%)"; }')
 svg_lines.append('}')
@@ -297,7 +304,7 @@ svg_lines.append('</script>')
 
 # Background
 svg_lines.append(f'<rect width="100%" height="100%" fill="#f8f9fa" />')
-svg_lines.append(f'<text id="header-title" x="{canvas_width / 2}" y="26">{title}</text>')
+svg_lines.append(f'<text id="header-title" x="{canvas_width / 2}" y="26">{html.escape(title)}</text>')
 svg_lines.append(f'<text id="details" x="{canvas_width / 2}" y="44">Total Samples: {total_samples} (Hover over frame to view details)</text>')
 
 left_margin = 10
@@ -312,19 +319,19 @@ for name, depth, x_ratio, w_ratio, count in boxes:
     color = get_color(name, palette)
     pct = round((count / total_samples) * 100, 2)
     
-    escaped_name = name.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
-    
+    escaped_name = html.escape(name, quote=True)
+
     svg_lines.append(
-        f'<g onmouseover="showInfo(this, \'{escaped_name}\', {count}, {pct})" onmouseout="resetInfo()">'
+        f'<g data-name="{escaped_name}" data-samples="{count}" data-pct="{pct}" onmouseover="showInfo(this)" onmouseout="resetInfo()">'
         f'<rect class="func-box" x="{x:.2f}" y="{y:.2f}" width="{w:.2f}" height="{row_height - 1}" fill="{color}" rx="2" ry="2"/>'
     )
     if w > 35:
         # Clip text if box is narrow
-        display_text = escaped_name
+        display_text = name
         char_limit = int(w / 7)
         if len(display_text) > char_limit:
             display_text = display_text[:max(char_limit - 2, 1)] + '..'
-        svg_lines.append(f'<text x="{x + 3:.2f}" y="{y + 12:.2f}">{display_text}</text>')
+        svg_lines.append(f'<text x="{x + 3:.2f}" y="{y + 12:.2f}">{html.escape(display_text)}</text>')
     svg_lines.append('</g>')
 
 svg_lines.append('</svg>')

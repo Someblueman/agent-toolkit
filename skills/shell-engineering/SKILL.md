@@ -18,12 +18,12 @@ Before modifying or creating shell scripts, inspect the repository instructions 
 
 ## 2. Non-negotiable defaults
 
-- **The Shell Restraint Mandate**: Restrict shell strictly to orchestration, process execution, environment manipulation, and file-system plumbing. Strictly FORBID complex domain logic, in-memory data structures (trees, graphs, nested maps), floating-point arithmetic engines, or distributed state machines in shell. When a script exceeds ~150-200 lines, requires complex state, or parses non-trivial JSON/YAML/XML, delegate to Python (`uv run`), Go (`go run`), `jq`, or `awk`.
+- **The Shell Restraint Mandate**: Restrict shell strictly to orchestration, process execution, environment manipulation, and file-system plumbing. Strictly FORBID complex domain logic, in-memory data structures (trees, graphs, nested maps), floating-point arithmetic engines, or distributed state machines in shell. When complex state or structured data makes shell difficult to maintain, consider Python (`uv run`), Go (`go run`), `jq`, or `awk`.
 - **Strict Execution Modes**:
-  - Bash scripts MUST enable `set -euo pipefail` and `IFS=$'\n\t'` at the top of the file.
-  - POSIX `/bin/sh` scripts MUST enable `set -eu` at the top of the file.
+  - Choose Bash error handling deliberately: `set -euo pipefail` can help, but handle expected failures explicitly. Change IFS only when the parsing contract requires it.
+  - For POSIX shell, choose `set -eu` only with its context-dependent error behavior understood.
 - **Defensive Quoting**: Double-quote EVERY parameter expansion, command substitution, and variable reference (`"$var"`, `"$@"`). Never use unquoted `$var` or `$*` unless word-splitting or glob expansion is explicitly and provably required.
-- **Deterministic Signal & Exit Cleanup**: Always allocate temporary resources via `mktemp -d` and bind deterministic cleanup functions to `EXIT`, `INT`, `TERM`, and `HUP` signals using `trap 'cleanup' EXIT INT TERM HUP`.
+- **Deterministic Signal & Exit Cleanup**: Always allocate temporary resources via `mktemp -d` and bind deterministic cleanup functions to `EXIT`, `INT`, `TERM`, and `HUP` signals using an EXIT cleanup trap and separate signal handlers that exit 130, 143 and 129 respectively.
 - **Dialect Discipline (POSIX vs Bash)**:
   - If shebang is `#!/bin/sh`, enforce strict POSIX compliance. Ban all bashisms: `[[ ... ]]`, `<<<`, `&>`, `${arr[@]}`, `declare`, `local` extensions, and Bash regex `=~`.
   - If shebang is `#!/usr/bin/env bash`, preserve compatibility with Bash 3.2 (macOS default) unless the repository explicitly targets Bash 4+ or Bash 5+. Avoid `declare -A` (associative arrays), `readarray`/`mapfile`, and `${var,,}` parameter transformations in portable scripts.

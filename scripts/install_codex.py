@@ -34,9 +34,11 @@ def fingerprint(path: Path) -> str | None:
 
 
 def valid_target(name: str) -> bool:
-    return name in {"AGENTS.md", "scripts/check_anti_bloat.py"} or (
-        name.startswith("skills/") and NAME.fullmatch(name[7:]) is not None
-    )
+    return name in {
+        "AGENTS.md",
+        "scripts/check_anti_bloat.py",
+        "scripts/test_check_anti_bloat.py",
+    } or (name.startswith("skills/") and NAME.fullmatch(name[7:]) is not None)
 
 
 def read_state(path: Path) -> dict[str, str]:
@@ -69,6 +71,9 @@ def stage_content(stage: Path) -> dict[str, Path]:
         "scripts/check_anti_bloat.py": REPO
         / "skills/pragmatic-engineering/scripts/check_anti_bloat.py",
     }
+    sources["scripts/test_check_anti_bloat.py"] = (
+        REPO / "skills/pragmatic-engineering/scripts/test_check_anti_bloat.py"
+    )
     for name in names:
         shared = REPO / "skills" / name
         native = adapter / "native-skills" / name

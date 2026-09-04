@@ -12,13 +12,15 @@ import argparse
 import json
 import math
 import os
+import random
+import statistics
 import subprocess
 import sys
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 
-def calculate_percentile(sorted_data: List[float], percentile: float) -> float:
+def calculate_percentile(sorted_data: list[float], percentile: float) -> float:
     """Calculate the p-th percentile of sorted data using linear interpolation."""
     if not sorted_data:
         return 0.0
@@ -32,15 +34,17 @@ def calculate_percentile(sorted_data: List[float], percentile: float) -> float:
     return d0 + d1
 
 
-def compute_statistics(samples_ms: List[float]) -> Dict[str, Any]:
+def compute_statistics(samples_ms: list[float]) -> dict[str, Any]:
     """Compute comprehensive statistical metrics from timing samples in milliseconds."""
     n = len(samples_ms)
-    if n == 0:
-        return {}
+    if n < 2 or any(not math.isfinite(x) or x <= 0 for x in samples_ms):
+        raise ValueError("At least two finite positive samples are required")
 
     sorted_samples = sorted(samples_ms)
     mean_val = sum(sorted_samples) / n
-    variance = sum((x - mean_val) ** 2 for x in sorted_samples) / (n - 1) if n > 1 else 0.0
+    variance = (
+        sum((x - mean_val) ** 2 for x in sorted_samples) / (n - 1) if n > 1 else 0.0
+    )
     stdev = math.sqrt(variance)
     cv_percent = (stdev / mean_val * 100.0) if mean_val > 0 else 0.0
 
@@ -59,18 +63,15 @@ def compute_statistics(samples_ms: List[float]) -> Dict[str, Any]:
     upper_fence = p75 + 1.5 * iqr
     outliers = [x for x in sorted_samples if x < lower_fence or x > upper_fence]
 
-    # Student's t critical value approximation for 95% confidence interval
-    # For N >= 30, t_0.025 ≈ 1.96 to 2.04
-    t_val = 2.045 if n < 30 else 1.960
-    ci95_margin = t_val * (stdev / math.sqrt(n)) if n > 1 else 0.0
-
-    # Noise stability assessment
-    if cv_percent <= 2.0:
-        noise_status = "STABLE (High precision, CV <= 2.0%)"
-    elif cv_percent <= 5.0:
-        noise_status = "ACCEPTABLE (Moderate variance, 2.0% < CV <= 5.0%)"
-    else:
-        noise_status = "UNSTABLE / NOISY (High variance, CV > 5.0% - check system load)"
+    # Percentile bootstrap of the mean: approximate, assumes independent samples.
+    rng = random.Random(42)
+    means = sorted(statistics.mean(rng.choices(samples_ms, k=n)) for _ in range(2000))
+    ci_low, ci_high = (
+        calculate_percentile(means, 2.5),
+        calculate_percentile(means, 97.5),
+    )
+    ci95_margin = (ci_high - ci_low) / 2
+    noise_status = "Descriptive CV only; assess uncertainty against the target effect"
 
     return {
         "sample_count": n,
@@ -88,20 +89,22 @@ def compute_statistics(samples_ms: List[float]) -> Dict[str, Any]:
         "p99_ms": round(p99, 4),
         "iqr_ms": round(iqr, 4),
         "ci95_margin_ms": round(ci95_margin, 4),
-        "ci95_low_ms": round(mean_val - ci95_margin, 4),
-        "ci95_high_ms": round(mean_val + ci95_margin, 4),
+        "ci95_low_ms": ci_low,
+        "ci95_high_ms": ci_high,
         "outlier_count": len(outliers),
         "noise_status": noise_status,
-        "raw_samples_ms": [round(x, 4) for x in samples_ms],
+        "raw_samples_ms": list(samples_ms),
+        "ci_method": "Approximate percentile bootstrap mean, 2000 resamples, seed 42; iid assumption; small samples may understate uncertainty",
+        "measurement": "Fresh-process elapsed time, including startup; warmups do not warm a persistent runtime",
     }
 
 
 def execute_single_run(
-    cmd: List[str],
+    cmd: list[str],
     quiet: bool = True,
-    timeout_sec: Optional[float] = None,
-    affinity_core: Optional[int] = None,
-) -> Tuple[float, int]:
+    timeout_sec: float | None = None,
+    affinity_core: int | None = None,
+) -> tuple[float, int]:
     """Execute a single run of the target command and return (elapsed_time_ms, exit_code)."""
     env = os.environ.copy()
     exec_cmd = list(cmd)
@@ -131,26 +134,36 @@ def execute_single_run(
         return (end_ns - start_ns) / 1_000_000.0, -1
 
 
-def print_stats_table(stats: Dict[str, Any], command_str: str, warmups: int) -> None:
+def print_stats_table(stats: dict[str, Any], command_str: str, warmups: int) -> None:
     """Print formatted statistical summary table to stdout."""
     print("=" * 65)
-    print(f"BENCHMARK STATISTICAL REPORT")
+    print("BENCHMARK STATISTICAL REPORT")
     print(f"Command:    {command_str}")
     print(f"Iterations: {stats['sample_count']} timed (+ {warmups} warmup)")
     print(f"Stability:  {stats['noise_status']}")
     print("-" * 65)
     print(f"{'Metric':<25} | {'Value (ms)':<15} | {'Notes':<18}")
     print("-" * 65)
-    print(f"{'Mean (μ)':<25} | {stats['mean_ms']:<15.4f} | +/- {stats['stdev_ms']:.4f} ms")
+    print(
+        f"{'Mean (μ)':<25} | {stats['mean_ms']:<15.4f} | +/- {stats['stdev_ms']:.4f} ms"
+    )
     print(f"{'Median (p50)':<25} | {stats['median_ms']:<15.4f} | 50th percentile")
-    print(f"{'Min ... Max':<25} | {stats['min_ms']:<7.3f} ... {stats['max_ms']:<6.3f} | Range: {stats['max_ms'] - stats['min_ms']:.3f} ms")
-    print(f"{'Std Dev (σ)':<25} | {stats['stdev_ms']:<15.4f} | CV = {stats['cv_percent']:.2f}%")
+    print(
+        f"{'Min ... Max':<25} | {stats['min_ms']:<7.3f} ... {stats['max_ms']:<6.3f} | Range: {stats['max_ms'] - stats['min_ms']:.3f} ms"
+    )
+    print(
+        f"{'Std Dev (σ)':<25} | {stats['stdev_ms']:<15.4f} | CV = {stats['cv_percent']:.2f}%"
+    )
     print(f"{'IQR (p75 - p25)':<25} | {stats['iqr_ms']:<15.4f} | Middle 50% spread")
-    print(f"{'95% Conf Interval':<25} | [{stats['ci95_low_ms']:.3f}, {stats['ci95_high_ms']:.3f}] | +/- {stats['ci95_margin_ms']:.3f} ms")
+    print(
+        f"{'95% Conf Interval':<25} | [{stats['ci95_low_ms']:.3f}, {stats['ci95_high_ms']:.3f}] | +/- {stats['ci95_margin_ms']:.3f} ms"
+    )
     print(f"{'90th Percentile (p90)':<25} | {stats['p90_ms']:<15.4f} | ")
     print(f"{'95th Percentile (p95)':<25} | {stats['p95_ms']:<15.4f} | Tail latency")
     print(f"{'99th Percentile (p99)':<25} | {stats['p99_ms']:<15.4f} | Extreme tail")
     print(f"{'Outliers Detected':<25} | {stats['outlier_count']:<15} | Tukey's 1.5*IQR")
+    print(stats["ci_method"])
+    print(stats["measurement"])
     print("=" * 65)
 
 
@@ -159,25 +172,29 @@ def main() -> int:
         description="Statistically rigorous benchmark runner with warmup and noise analysis."
     )
     parser.add_argument(
-        "--warmup", "-w",
+        "--warmup",
+        "-w",
         type=int,
         default=3,
         help="Number of untimed warmup iterations (default: 3)",
     )
     parser.add_argument(
-        "--iterations", "-n",
+        "--iterations",
+        "-n",
         type=int,
         default=30,
         help="Number of timed measurement iterations (default: 30)",
     )
     parser.add_argument(
-        "--json-out", "-j",
+        "--json-out",
+        "-j",
         type=str,
         default=None,
         help="Path to export statistical results in JSON format",
     )
     parser.add_argument(
-        "--core", "-c",
+        "--core",
+        "-c",
         type=int,
         default=None,
         help="Physical CPU core ID to pin execution (Linux taskset)",
@@ -189,7 +206,8 @@ def main() -> int:
         help="Per-iteration execution timeout in seconds (default: 60.0)",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Show command stdout and stderr during benchmark runs",
     )
@@ -200,6 +218,16 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+
+    if (
+        args.iterations < 2
+        or args.warmup < 0
+        or not math.isfinite(args.timeout)
+        or args.timeout <= 0
+    ):
+        parser.error(
+            "iterations >= 2, warmup >= 0, and finite positive timeout required"
+        )
 
     # Clean leading '--' from command args if present
     target_cmd = args.cmd
@@ -227,12 +255,14 @@ def main() -> int:
             )
             if code != 0:
                 print(
-                    f"Warning: Warmup iteration {i+1} exited with non-zero return code {code}",
+                    f"Error: Warmup iteration {i + 1} exited with non-zero return code {code}",
                     file=sys.stderr,
                 )
 
+                return 1
+
     # 2. Measurement Phase
-    samples_ms: List[float] = []
+    samples_ms: list[float] = []
     for i in range(args.iterations):
         elapsed_ms, code = execute_single_run(
             target_cmd,
@@ -242,7 +272,7 @@ def main() -> int:
         )
         if code != 0:
             print(
-                f"Error: Iteration {i+1} failed with exit code {code}",
+                f"Error: Iteration {i + 1} failed with exit code {code}",
                 file=sys.stderr,
             )
             return code

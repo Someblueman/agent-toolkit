@@ -82,22 +82,16 @@ int arena_init(arena_t *a, size_t capacity) {
 
 // Allocate memory with strict alignment
 void *arena_alloc(arena_t *a, size_t size, size_t align) {
-    if (!a || size == 0) return NULL;
-    
-    // Default alignment to max_align_t if align is 0
+    if (!a || !a->buffer || size == 0 || a->offset > a->capacity) return NULL;
     if (align == 0) align = _Alignof(max_align_t);
-
-    // Calculate aligned offset: (offset + align - 1) & ~(align - 1)
-    size_t current_addr = (size_t)(a->buffer + a->offset);
-    size_t aligned_addr = (current_addr + align - 1) & ~(align - 1);
-    size_t new_offset = (aligned_addr - (size_t)a->buffer) + size;
-
-    if (new_offset > a->capacity) {
-        return NULL; // Out of memory in arena
-    }
-
-    a->offset = new_offset;
-    void *ptr = (void *)aligned_addr;
+    if ((align & (align - 1)) != 0) return NULL; // Power of two required
+    uintptr_t current = (uintptr_t)(a->buffer + a->offset);
+    size_t padding = (align - (current & (align - 1))) & (align - 1);
+    size_t remaining = a->capacity - a->offset;
+    if (padding > remaining || size > remaining - padding) return NULL;
+    size_t start = a->offset + padding;
+    void *ptr = a->buffer + start;
+    a->offset = start + size; // Bounded by capacity above
     memset(ptr, 0, size); // Zero initialization
     return ptr;
 }

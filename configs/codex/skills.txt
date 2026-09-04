@@ -1,8 +1,11 @@
 c-engineering
+code-simplification
 define-goal
 go-engineering
+hardware-aware-optimization
 haskell
 pragmatic-engineering
+profiling-software-performance
 python-engineering
 rust-engineering
 shell-engineering

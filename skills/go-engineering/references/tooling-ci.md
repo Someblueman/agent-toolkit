@@ -6,7 +6,7 @@ Read this for fast-path `go test` filtering, race detector configuration, `golan
 
 ## 1. Fast-Path Test Filtering Recipes
 
-Avoid running whole-repository test suites during localized edits. Use precise test targeting to keep feedback loops under 500ms.
+Avoid running whole-repository test suites during localized edits. Use precise test targeting to keep feedback relevant and quick.
 
 ### Targeting Matrix
 
@@ -15,7 +15,7 @@ Avoid running whole-repository test suites during localized edits. Use precise t
 | **Single Unit Test** | `go test -v -run ^TestLoginSuccess$ ./internal/auth` |
 | **Single Subtest** | `go test -v -run ^TestLogin/InvalidPassword$ ./internal/auth` |
 | **Target Package with Race Detector** | `go test -race ./internal/auth` |
-| **Fast Short Mode (Skip slow tests)** | `go test -short ./...` |
+| **Fast Short Mode (Skip slow tests)** | `go test -short ./path/to/affected/package` |
 | **Re-run only failed package** | `go test ./internal/storage` |
 | **Specific Build Tag (e.g. integration)**| `go test -tags=integration -run ^TestPostgresConnection$ ./internal/database` |
 
@@ -106,7 +106,7 @@ golangci-lint run ./...
 
 ## 4. Module Hygiene & Dependency Verification
 
-Never leave dirty or uncommitted changes in `go.mod` and `go.sum`.
+Preserve existing changes in `go.mod` and `go.sum`. Run tidy only for an authorized dependency change or a required repository check, and inspect its diff.
 
 ### Dependency Maintenance Commands
 
@@ -131,7 +131,7 @@ git diff --exit-code go.mod go.sum
 | **Skipping `-race` on Concurrency Code** | Latent data races pass tests silently and corrupt production memory. | Always run `go test -race` on packages with channels or mutexes. |
 | **Unchecked HTTP Response Bodies** | Leaks TCP sockets and connection pool slots indefinitely. | Always `defer resp.Body.Close()` immediately after checking `err == nil`. |
 | **Slow Integration Tests in Default Suite** | Developers avoid running local tests because test suite takes 10 minutes. | Gate slow tests behind `testing.Short()` or `//go:build integration`. |
-| **Ignoring Unused Dependencies** | Bloats binary size and introduces supply chain vulnerability vectors. | Run `go mod tidy` before every commit. |
+| **Ignoring Unused Dependencies** | Bloats binary size and introduces supply chain vulnerability vectors. | Run `go mod tidy` when dependency changes require it. |
 
 ---
 
@@ -179,5 +179,5 @@ go test -race ./internal/domain
 golangci-lint run ./internal/domain/...
 
 # 4. Final module hygiene check
-go mod tidy && git diff --exit-code go.mod go.sum
+git diff -- go.mod go.sum  # inspect dependency changes; tidy only when relevant
 ```

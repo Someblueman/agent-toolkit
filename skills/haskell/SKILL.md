@@ -27,21 +27,16 @@ Make the smallest change that is correct for the repository's actual contract. M
 
 ## Codebase Architecture & Namespace Boundaries
 
-- **Explicit Export Lists on ALL Modules**: Every Haskell module (libraries, executables, test suites, internal helpers, and CLI entry points) must define an explicit export list (`module Package.Foo (Type(..), func, ...) where`). Never leave export lists implicit. Omitting export lists leaks internal helpers, breaks encapsulation, defeats dead-code elimination, and invalidates smart constructors.
-- **3-Tier Hierarchical Architecture**: Structure codebases along strictly unidirectional layer boundaries:
-  1. *Core Domain (`Package.Core.*` / `Package.Domain.*`)*: Pure domain models, immutable business logic, ADTs with smart constructors, and algebraic invariants. Zero external I/O, zero database drivers, zero HTTP/network dependencies.
-  2. *Storage & Network Adapters (`Package.Storage.*`, `Package.Network.*`)*: Database drivers (PostgreSQL, SQLite), HTTP clients/servers, file I/O, external wire formats, and external integration adapters.
-  3. *Application Wiring & CLI (`Package.CLI.*`, `Package.App.*`, `Main.hs`)*: Environment initialization, argument parsing (`optparse-applicative`), configuration loading, adapter instantiation, and top-level execution loop.
-  - *Layering Rule*: Imports must flow unidirectionally from outer layers to inner layers (`CLI` -> `Storage` -> `Core`). Inner domain modules must never import outer adapters or application modules.
-  - *God Module Decomposition*: Proactively decompose monolithic modules (>500–1000 lines) into focused, cohesive hierarchical submodules.
+- Use explicit exports at public and invariant-enforcing boundaries; preserve reasonable conventions for executable and test modules. Export lists control API visibility, not a blanket guarantee about optimization.
+- Preserve the repository's module structure. Separate pure logic from effects when that clarifies dependencies, without imposing a three-tier namespace. Review large modules for cohesion rather than splitting mechanically.
 - **`Package.Internal.*` Isolation Protocol**: Isolate unvalidated data constructors, unchecked internal primitives, and white-box test escape hatches in `Package.Internal.*` or `Package.Foo.Internal` submodules. Public API modules (`Package` or `Package.Foo`) must export only opaque types, smart constructors, and safe operations. Mark internal modules as `other-modules` in `.cabal` or document them with explicit Haddock warnings (`Unstable Internal API`). Standard application code and external library consumers must never import `.Internal` modules.
 
 ## Pragmatic Anti-Abstraction & Single-Path Execution
 
-- **Rule of Three for Typeclasses**: Write concrete data types and functions first. Do NOT introduce a custom typeclass (`class MonadUserRepo m`, `class Entity a`) unless at least 3 distinct concrete implementations exist in the repository or an established standard contract (`Aeson.ToJSON`, `Eq`, `Ord`, `Semigroup`) requires it.
+- Prefer concrete code; introduce an abstraction when it simplifies a current requirement or expresses a necessary boundary or invariant.
 - **Concrete Records over Monad Transformer / Effect Bloat**: Prefer `ReaderT Env IO a` (or plain functions taking a concrete `Env` record of functions/handles) over deep custom transformer stacks (`ReaderT C (ExceptT E (StateT S IO))`) or heavy extensible effect libraries (Polysemy, Freer, Eff).
 - **Single-Path Codecs & Clean Replacement**: When updating data models, serialization schemas, or function signatures, perform a clean in-place replacement and atomically update all call sites, internal usages, and tests in the same change wave.
-  - *Ban Zombie Decoders / Dual-Format Fallbacks*: Never use `<|>` in `FromJSON` or parser combinators to parse obsolete legacy formats alongside new formats unless explicit backwards compatibility is commanded.
+  - *Ban Zombie Decoders / Dual-Format Fallbacks*: Never use `<|>` in `FromJSON` or parser combinators to parse obsolete legacy formats alongside new formats unless published, durable-data or cross-process contracts require compatibility or migration.
   - *Ban Shim Multiplication*: Do not retain deprecated functions or aliases as pass-through forwarding wrappers around new implementations.
   - *Ban Preemptive Deprecation Staging*: Replace definitions cleanly instead of introducing `{-# DEPRECATED #-}` pragmas when immediate refactoring is feasible.
   - *Ban Paranoid Dual-Writing & Ghost Code*: Never write to both old and new stores/fields concurrently during refactors. Never leave commented-out implementations, unused fallback branches, or dead code in `_legacy` files.
@@ -58,7 +53,7 @@ Match verification effort directly to the scope and risk of the change:
     - `cabal build lib:<pkg-name>` or `cabal build exe:<exe-name>`
   - Targeted test execution by pattern or test name (Tasty / Hspec):
     - `cabal test <pkg>:<suite> --test-options="-m \"<pattern>\""`
-    - `cabal test <pkg>:<suite> --test-options="--match=\"<pattern>\""`
+    - Hspec: `cabal test <pkg>:<suite> --test-options='--match pattern'`; Tasty: `cabal test <pkg>:<suite> --test-options='-p pattern'`. Confirm the selected runner with its `--help`.
     - `stack test <pkg>:<suite> --test-arguments="-m \"<pattern>\""`
 - **Tier 2 (Full Verification)** for core architectural modifications, cryptographic primitives, concurrency/STM invariants, durable data schema migrations, or public library published APIs:
   - Full workspace build and test: `cabal build all && cabal test all` (or `stack test`)
@@ -69,10 +64,10 @@ Match verification effort directly to the scope and risk of the change:
 
 ## Reference Routing
 
-- Load `references/types-api.md` for domain modeling, explicit export lists, 3-tier namespaces, `Internal` isolation, totality, failures, and concrete-first design.
+- Load `references/types-api.md` for domain modeling, explicit export lists, repository module boundaries, `Internal` isolation, totality, failures, and concrete-first design.
 - Load `references/boundaries-ffi.md` for text/bytes, parsers, single-path serialization (no zombie decoders or shims), FFI, and unsafe operations.
 - Load `references/tooling-ci.md` for Cabal/Stack/Hpack/Nix, warnings (`-Wmissing-export-lists`), Fast-Path command cookbook, packaging, and CI.
-- Load `references/advanced-types.md` for Rule of Three on typeclasses, GADTs, type families, constraints, deriving, roles, and compile-time tests.
+- Load `references/advanced-types.md` for Concrete-First Design on typeclasses, GADTs, type families, constraints, deriving, roles, and compile-time tests.
 - Load `references/algebraic-laws.md` for algebra, numeric domains, instances, normalization, and property testing.
 - Load `references/evaluation-performance.md` for laziness, WHNF/NF, strictness, profiling, Core, and optimization.
 - Load `references/effects-concurrency.md` for exceptions, resources, asynchronous exceptions, STM, structured concurrency, and streaming.

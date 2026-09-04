@@ -9,7 +9,7 @@ Read this guide when deciding whether a task belongs in shell, designing script 
 Shell script is fundamentally designed for **process execution, command orchestration, pipeline composition, and lightweight filesystem operations**. It is not a general-purpose application programming language. Writing complex domain logic or data manipulation in shell leads to subtle quoting bugs, unhandled edge cases in whitespace/special characters, poor performance, and untestable code.
 
 ### The Golden Rule of Shell Restraint
-> **Use shell exclusively as the thin orchestration glue between robust, purpose-built executables. The moment a script requires complex state, nested data structures, floating-point arithmetic, or exceeds ~150–200 lines of code, immediately delegate to Python, Go, `jq`, or `awk`.**
+> **Use shell exclusively as the thin orchestration glue between robust, purpose-built executables. The moment a script requires complex state, nested data structures, floating-point arithmetic, makes shell harder to reason about, consider Python, Go, `jq`, or `awk`.**
 
 ### What Belongs in Shell vs What is Forbidden
 
@@ -79,13 +79,17 @@ TMP_DIR=""
 
 cleanup() {
   local exit_code=$?
+  trap - EXIT
   if [[ -n "${TMP_DIR:-}" && -d "$TMP_DIR" ]]; then
     rm -rf "$TMP_DIR"
   fi
   exit "$exit_code"
 }
 
-trap cleanup EXIT INT TERM HUP
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 
 # ------------------------------------------------------------------------------
 # 3. Helper Functions (Single responsibility, local variables)

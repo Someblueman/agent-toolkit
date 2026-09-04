@@ -1,6 +1,6 @@
 # API Design, Header Architecture, Opaque Pointers, and Refactoring
 
-Read this for opaque pointer encapsulation (PIMPL in C), header include hygiene, translation unit boundaries, the Rule of Three for API contracts, and single-path refactoring. Memory arenas belong in `memory-arenas.md`; concurrency primitives in `concurrency-atomics.md`; compiler warnings in `tooling-sanitizers-ci.md`.
+Read this for opaque pointer encapsulation (PIMPL in C), header include hygiene, translation unit boundaries, concrete-first design for API contracts, and single-path refactoring. Memory arenas belong in `memory-arenas.md`; concurrency primitives in `concurrency-atomics.md`; compiler warnings in `tooling-sanitizers-ci.md`.
 
 ---
 
@@ -8,7 +8,7 @@ Read this for opaque pointer encapsulation (PIMPL in C), header include hygiene,
 
 Exposing struct field definitions in public headers binds callers directly to struct memory layout and private dependencies. When struct fields change, binary compatibility breaks, requiring full re-compilation of all consumer modules.
 
-Use the **opaque pointer** pattern (PIMPL in C):
+Use the **opaque pointer** pattern when representation hiding or stable binary layout is required. Public value types and internal records may appropriately expose fields:
 
 ### Public Header (`include/network_engine.h`)
 ```c
@@ -132,7 +132,7 @@ void session_destroy(session_t *s);
 
 ---
 
-## Rule of Three in C Architecture (Anti-Abstraction)
+## Concrete-First Design in C Architecture (Anti-Abstraction)
 
 Do NOT extract function pointer vtables (`struct ops`) or abstract driver interfaces when there is only 1 concrete implementation. Direct function calls are faster, inlinable, easily searchable (`grep`), and drastically simpler to debug.
 
@@ -157,7 +157,7 @@ int res = engine->ops->write(engine->ctx, 42, buf, len);
 
 ### ✅ PRAGMATIC: Direct Concrete API
 ```c
-// Pragmatic: Direct concrete functions until 3 distinct storage backends exist
+// Pragmatic: Direct concrete functions unless a current boundary benefits from abstraction
 typedef struct disk_storage disk_storage_t;
 
 disk_storage_t *disk_storage_open(const char *path);
@@ -173,7 +173,7 @@ int res = disk_storage_write(storage, 42, buf, len);
 
 ## Forbid Small Struct Builders (< 5 Fields)
 
-Do not create builder pattern objects or multi-step setters for simple data structures with fewer than 5 fields.
+- Choose direct construction, constructors or builders according to validation needs and call-site clarity, not field count.
 
 ### ❌ ANTI-PATTERN: Builder Pattern for 3-Field Struct
 ```c
@@ -225,7 +225,7 @@ When refactoring a function signature, struct layout, or module contract, perfor
 | Struct fields exposed in public `.h` | Breaks ABI on field edits, exposes private state | Opaque pointer `typedef struct foo foo_t;` |
 | Deep nested header `#include`s | Slow compilation, circular dependencies | Forward-declare structs; `#include` only in `.c` |
 | Speculative `struct ops` vtables for single backend | Indirect branch overhead, prevents inlining, obscures debug stack | Direct concrete functions (`disk_storage_read`) |
-| Builder pattern for structs < 5 fields | Boilerplate sprawl, dynamic memory overhead | Compound literals or simple constructors |
+| Unnecessary builder boilerplate | Boilerplate sprawl, dynamic memory overhead | Compound literals or simple constructors |
 | Forwarding wrapper shims for old APIs | Dead code bloat, confusing API surface | Clean in-place atomic update across all call sites |
 
 ---

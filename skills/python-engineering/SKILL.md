@@ -18,22 +18,22 @@ Produce the smallest correct Python change or the focused review the user reques
 ## Cross-cutting rules
 
 - **Concrete-First Architecture**: Write concrete functions, modules, and classes first. Prefer flat module hierarchies and pure functions over multi-layered class hierarchies (`BaseManager -> AbstractUserManager -> ConcreteUserManager -> CachedUserManager`).
-- **Rule of Three for Abstractions**: Apply the Rule of Three for abstract base classes (`abc.ABC`) and protocols (`typing.Protocol`). Write concrete implementations first; do not extract a Protocol, ABC, or generic interface unless at least 3 distinct concrete implementations exist in the repository or an established framework contract requires it.
+- Prefer concrete code; introduce an abstraction when it simplifies a current requirement or expresses a necessary boundary or invariant.
 - **Anti-Mock Sprawl**: Never extract single-implementation Protocols or abstract classes solely to generate test doubles with `unittest.mock.MagicMock`. Test concrete classes directly or use simple concrete in-memory doubles.
-- **Ban Small Builders (< 5 fields)**: Strictly forbid builder classes for data models with fewer than 5 fields (< 5 fields). Use direct instantiation with `@dataclass(slots=True, kw_only=True)`, `TypedDict`, or Pydantic `BaseModel`. Reserve builder patterns strictly for complex objects with 5 or more fields requiring multi-stage fallible validation.
+- Choose direct construction, constructors or builders according to validation needs and call-site clarity, not field count.
 - **Single-Path Execution & Atomic In-Place Refactoring**: When modifying functions, methods, or models, cleanly update all call sites, internal usages, and tests in the same change wave. Forbid legacy retention anti-patterns:
   - *Shim Multiplication*: Keeping deprecated functions as pass-through forwarding wrappers (`def old_fn(*args): warnings.warn(...); return new_fn(*args)`).
   - *Dual-Format Fallbacks & Zombie Decoders*: Retaining obsolete dictionary key fallbacks (`if "old_key" in data: ...`) or dual serializers without explicit requirement.
   - *Ghost Code*: Commenting out old implementations or parking dead code in `_legacy.py` files.
   - *Preemptive Deprecation Staging*: Adding `@deprecated` decorators or staged migration scaffolding when an immediate clean replacement is feasible.
-- **Trust Boundary Validation**: Validate all untrusted input (HTTP requests, CLI args, environment variables, message queues, JSON payloads) at network and process boundaries using strict Pydantic v2 `BaseModel` or `msgspec.Struct`. Internally, use clean, typed domain models (`@dataclass(slots=True)`).
-- **Async Concurrency Discipline**: Never block the asyncio event loop with synchronous I/O, synchronous database drivers, or `time.sleep()`. Use `await asyncio.sleep()`, async network clients (`httpx.AsyncClient`), or offload unavoidable blocking I/O/CPU calls via `await asyncio.to_thread()`. Use `asyncio.TaskGroup` for structured concurrency; ban unmonitored fire-and-forget `asyncio.create_task()`.
-- **Explicit Error Hierarchies**: Define domain-specific exception classes inheriting from standard `Exception`. Always preserve root exception context using `raise DomainError(...) from err`. Never swallow exceptions with bare `except:` or `except Exception: pass`.
-- **Modern Static Typing**: Include `from __future__ import annotations` at the top of every module. Use native union types (`str | None`, `int | float`), generic builtins (`list[T]`, `dict[K, V]`), and `typing.Self` for method chaining.
+- **Trust Boundary Validation**: Validate all untrusted input (HTTP requests, CLI args, environment variables, message queues, JSON payloads) at network and process boundaries using the repository's existing validators or focused explicit checks. Pydantic/msgspec can help complex boundaries but are not mandatory dependencies. Internally, use clear typed domain values.
+- **Async Concurrency Discipline**: Never block the asyncio event loop with synchronous I/O, synchronous database drivers, or `time.sleep()`. Use `await asyncio.sleep()`, async network clients (`httpx.AsyncClient`), or offload unavoidable blocking I/O via `await asyncio.to_thread()`. Use `asyncio.TaskGroup` on Python 3.11+ for structured concurrency; on 3.10 use the repository's established task ownership and cancellation pattern; ban unmonitored fire-and-forget `asyncio.create_task()`.
+- **Explicit Error Hierarchies**: Introduce domain exceptions when callers need to distinguish them; standard exceptions often suffice. Preserve causal context when wrapping errors using `raise DomainError(...) from err`. Never swallow exceptions with bare `except:` or `except Exception: pass`.
+- **Modern Static Typing**: Follow the project's annotation-evaluation conventions. Use native union types (`str | None`, `int | float`), generic builtins (`list[T]`, `dict[K, V]`), and `typing.Self` on 3.11+ (existing TypeVar or typing_extensions on 3.10) for method chaining.
 
 ## Verification
 
-Discover and follow the repository\x27s own commands first. Match validation scope to the change and widen it when risk warrants:
+Discover and follow the repository's own commands first. Match validation scope to the change and widen it when risk warrants:
 
 1. **Tier 1 (Fast-Path)**: For bug fixes, localized refactors, minor features, internal helpers, documentation, or config edits, run targeted commands on the affected module:
    - Targeted unit test filter: `uv run pytest tests/unit/test_module.py -k "test_target_name"`
@@ -49,7 +49,7 @@ Discover and follow the repository\x27s own commands first. Match validation sco
 
 ## References
 
-- API design, anti-OOP bloat, Rule of Three for Protocols, banning builders, dataclasses vs TypedDict vs Pydantic: read [references/api-design-antipatterns.md](references/api-design-antipatterns.md).
+- API design, anti-OOP bloat, Concrete-First Design for Protocols, banning builders, dataclasses vs TypedDict vs Pydantic: read [references/api-design-antipatterns.md](references/api-design-antipatterns.md).
 - Python 3.10+ static typing, trust boundary validation (Pydantic v2 / msgspec), wire schemas, serialization edge cases, and error hierarchies: read [references/types-data-contracts.md](references/types-data-contracts.md).
 - `asyncio` task lifecycles, structured concurrency (`TaskGroup`), thread pools (`ThreadPoolExecutor` / `asyncio.to_thread`), multiprocessing, and cancellation safety: read [references/async-concurrency.md](references/async-concurrency.md).
 - CPython runtime optimization, memory layout (`__slots__`, NumPy/Polars), GIL boundaries, and profiling (`cProfile`, `py-spy`, `line_profiler`): read [references/performance-profiling.md](references/performance-profiling.md).
