@@ -9,7 +9,7 @@ Produce the smallest correct Go change or the focused review the user requested.
 
 ## Start with the repository
 
-1. Cap pre-flight discovery to 3-5 directly relevant files: inspect `go.mod`, `go.sum`, toolchain version (Go 1.20+), existing linter config (`.golangci.yml` or `.golangci.yaml`), CI workflows, and nearby code/tests.
+1. Start discovery with 3-5 directly relevant files; expand when needed to understand contracts, callers, or risks. Relevant starting points include inspect `go.mod`, `go.sum`, toolchain version (Go 1.20+), existing linter config (`.golangci.yml` or `.golangci.yaml`), CI workflows, and nearby code/tests.
 2. Identify whether the request is implementation, diagnosis, review, API design, concurrency refactoring, performance optimization, or tooling. A review or diagnosis does not authorize edits.
 3. Existing repository choices win. Do not upgrade Go version, rewrite module paths, replace dependency management, change lint policies, or reformat unrelated files unless explicitly requested.
 4. Read only the reference documents routed below that match the current task.
@@ -20,7 +20,7 @@ Produce the smallest correct Go change or the focused review the user requested.
 - **Interface Discipline ("Accept Interfaces, Return Structs")**: Define interfaces on the consumer/client side where consumed, never on the producer/service side alongside concrete types. Return concrete structs (`*Service`, `*Store`) from constructors. Keep interfaces tiny (1-2 methods like `io.Reader`, `io.Closer`).
 - Prefer concrete code; introduce an abstraction when it simplifies a current requirement or expresses a necessary boundary or invariant.
 - Choose direct construction, constructors or builders according to validation needs and call-site clarity, not field count.
-- **Single-Path Execution & In-Place Refactoring**: Refactor types, functions, and interfaces in place and atomically update all call sites, internal usages, and tests in the same change wave. Ban legacy forwarding shims (`// Deprecated: use NewBar`), zombie JSON decoders, dual-writing, and commented-out dead code.
+- Replace internal interfaces in place and update callers and tests together. Preserve or migrate published APIs, durable data, and cross-process contracts as required. Add compatibility shims, version decoders, or transitional dual writes only when those contracts require them; remove superseded internal implementations and commented-out legacy code.
 - **Goroutine Lifecycles & Leak Prevention**: Every goroutine must have a deterministic lifecycle and guaranteed termination. Always select on `ctx.Done()` when performing blocking channel or I/O operations. Use `errgroup.Group` for structured concurrent subtasks.
 - **Context Propagation**: Pass `ctx context.Context` explicitly as the first parameter of I/O and blocking functions. Never store `context.Context` inside a struct field. Always invoke `defer cancel()` immediately after creating derived contexts (`context.WithTimeout`, `context.WithCancel`).
 - **Explicit Error Handling & Wrapping**: Wrap contextual errors with `fmt.Errorf("context: %w", err)` to preserve causal chains. Inspect errors using `errors.Is` and `errors.As`. Combine concurrent errors with `errors.Join`. Ban `panic()` for ordinary operational failures (I/O, database, network, user input); reserve `panic()` strictly for unrecoverable startup invariants or programmer bugs.
@@ -28,7 +28,7 @@ Produce the smallest correct Go change or the focused review the user requested.
 
 ## Verification
 
-Discover and follow the repository's own commands first. Match validation scope to the change and widen it when risk warrants:
+Follow repository-required checks. The commands below are examples to select from, not a checklist to run in full. Choose checks for the changed behavior and risk; documentation-only changes do not automatically require code tests. Broaden or repeat checks only for new changes, failures, unresolved risks, or required acceptance criteria.
 
 1. **Tier 1 (Fast-Path)**: For bug fixes, localized refactors, minor features, internal helpers, documentation, or config edits, run targeted commands on the affected package:
    - Target single test: `go test -v -run ^TestTargetName$ ./internal/auth`

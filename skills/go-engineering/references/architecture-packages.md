@@ -82,10 +82,10 @@ Prefer struct literals and simple constructors when they make requirements clear
 
 ## 4. Single-Path Execution & Atomic In-Place Refactoring
 
-When refactoring Go code (renaming methods, modifying struct fields, altering package paths):
+Before renaming methods, modifying struct fields, or altering package paths, establish published API, durable-data, and cross-process contracts. Preserve or migrate those contracts as required. For internal interfaces:
 - Perform a **clean in-place replacement** and atomically update all call sites, internal usages, and tests in the same change wave.
 - **Forbidden Legacy Retention Anti-Patterns**:
-  - *Forwarding Shims*: Leaving deprecated wrapper functions around new implementations:
+  - *Forwarding Shims*: Leaving deprecated wrapper functions without a published compatibility requirement:
     ```go
     // BAD: Retaining deprecated forwarding shim
     // Deprecated: use NewClient instead.

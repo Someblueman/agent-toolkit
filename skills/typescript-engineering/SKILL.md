@@ -25,7 +25,7 @@ This skill owns TypeScript language, API, runtime-boundary, project-configuratio
 - Design flat, cohesive feature modules: colocate domain models, business logic, and direct database/I/O queries in feature modules rather than scattering across redundant layers. Do not create multi-layer service/manager/repository wrappers (`Controller -> Service -> Manager -> Repository -> DAO`) where intermediate layers merely forward calls without transformation.
 - Prefer concrete code; introduce an abstraction when it simplifies a current requirement or expresses a necessary boundary or invariant.
 - Choose direct construction, constructors or builders according to validation needs and call-site clarity, not field count.
-- Perform single-path atomic in-place refactoring: cleanly replace old implementations and atomically update all call sites, internal usages, and tests in the same change wave. Never introduce forwarding shims, zombie decoders, preemptive `@deprecated` staging, paranoid dual-writing, ghost code, or array/prototype monkey-patching.
+- Replace internal interfaces in place and update callers and tests together. Preserve or migrate published APIs, durable data, and cross-process contracts as required. Add compatibility shims, version decoders, or transitional dual writes only when those contracts require them; remove superseded internal implementations and commented-out legacy code.
 - Treat external data as `unknown`. Parse or validate it once at the trust boundary, then pass a trusted domain type inward. Type assertions, type declarations, and generics provide no runtime validation.
 - Treat persisted, queued, cached, or cross-process data that can outlive one process or deployment as a runtime protocol. Decode a supported version, validate it, migrate explicitly when required, and only then construct the current domain type. Do not let an in-memory TypeScript refactor silently redefine durable data.
 - Validate operational inputs as well as object shape: paths, sizes, counts, timeouts, retry limits, and concurrency must be finite, bounded, and authorized for the operation. Static `string`/`number` types do not establish those properties.
@@ -104,7 +104,7 @@ Never claim a performance improvement from code inspection alone. Type-level sim
 
 ## 7. Verification and handoff
 
-Run tiered verification proportionate to the scope and risk of changes:
+Follow repository-required checks. The commands below are examples to select from, not a checklist to run in full. Choose checks for the changed behavior and risk; documentation-only changes do not automatically require code tests. Broaden or repeat checks only for new changes, failures, unresolved risks, or required acceptance criteria.
 
 - **Tier 1 (Fast-Path - TDD & Localized Edits)**: Run targeted test suites and fast typechecks during rapid TDD iteration:
   - Vitest: `vitest run <file> -t "<pattern>"`

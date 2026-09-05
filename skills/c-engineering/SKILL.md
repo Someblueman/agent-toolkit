@@ -9,7 +9,7 @@ Produce the smallest correct C change or the focused review the user requested. 
 
 ## Start with the repository
 
-1. Read applicable repository instructions and inspect worktree/branch status, the current diff, build definitions (`Makefile`, `CMakeLists.txt`, `meson.build`), compiler warning flags, CI pipelines, and nearby code or tests. Cap pre-flight discovery to 3-5 directly relevant files. Preserve unrelated and pre-existing changes.
+1. Read applicable repository instructions and inspect worktree/branch status, the current diff, build definitions (`Makefile`, `CMakeLists.txt`, `meson.build`), compiler warning flags, CI pipelines, and nearby code or tests. Start discovery with 3-5 directly relevant files; expand when needed to understand contracts, callers, or risks. Preserve unrelated and pre-existing changes.
 2. Identify whether the request is implementation, diagnosis, review, API design, performance optimization, or build tooling. A review or diagnosis does not authorize edits.
 3. Existing repository choices win. Do not change the C standard baseline (C99, C11, C17, C23), compiler requirement (Clang, GCC, MSVC), build system, warning levels, or public API stability contracts unless the request requires it.
 4. For a new module or library, default to C11 or C17 with strict compiler warnings (`-Wall -Wextra -Werror -pedantic`). Enable AddressSanitizer and UBSan by default during debug builds and test execution.
@@ -25,7 +25,7 @@ Produce the smallest correct C change or the focused review the user requested. 
 - **API representation**: Use opaque pointers when representation hiding or ABI stability warrants it; plain value structs can be clearer for small internal data.
 - Prefer concrete code; introduce an abstraction when it simplifies a current requirement or expresses a necessary boundary or invariant.
 - Choose direct construction, constructors or builders according to validation needs and call-site clarity, not field count.
-- **Single-Path Execution & Atomic In-Place Refactoring**: When refactoring or updating an interface, data structure, or function, perform a clean in-place replacement and atomically update all call sites, internal usages, and tests in the same change wave. Never introduce forwarding wrapper shims, deprecated struct aliases, or ghost/commented-out legacy code.
+- Replace internal interfaces in place and update callers and tests together. Preserve or migrate published APIs, durable data, and cross-process contracts as required. Add compatibility shims, version decoders, or transitional dual writes only when those contracts require them; remove superseded internal implementations and commented-out legacy code.
 - **Bounded Buffers & Safe String Handling**: Strictly forbid unsafe legacy libc functions: `strcpy`, `strcat`, `gets`, `sprintf`, and unsized `scanf %s`. Mandate bounded replacements: `snprintf` with truncation checking, length-bounded copy operations, or string slices (`str_view_t`).
 - **Integer Overflow Protection**: Prevent integer overflow/wraparound when calculating allocation sizes or array offsets. Use C23 `<stdckdint.h>` (`ckd_mul`, `ckd_add`) or compiler builtins (`__builtin_mul_overflow`, `__builtin_add_overflow`) before calling `malloc` or `realloc`.
 - **C11 Atomics & Concurrency Discipline**: Use `<stdatomic.h>` with the weakest necessary memory ordering (acquire-release for synchronization, relaxed for independent counters). Forbid raw volatile variables for thread synchronization. Always wrap `pthread_cond_wait()` inside a `while (!condition)` predicate check.
@@ -34,7 +34,7 @@ Produce the smallest correct C change or the focused review the user requested. 
 
 ## Verification
 
-Discover and follow the repository's own commands first. Match validation scope to the change and widen it when risk warrants:
+Follow repository-required checks. The commands below are examples to select from, not a checklist to run in full. Choose checks for the changed behavior and risk; documentation-only changes do not automatically require code tests. Broaden or repeat checks only for new changes, failures, unresolved risks, or required acceptance criteria.
 
 1. **Tier 1 (Fast-Path)**: For bug fixes, localized refactors, minor features, internal helpers, or unit tests, run targeted compiler and test invocations:
    - Direct Clang/GCC Fast-Path invocation with ASan and UBSan:

@@ -210,9 +210,9 @@ point_t pt2 = (point_t){ .x = 1.0f, .y = 2.0f, .z = 3.0f };
 
 ## Single-Path Execution & Atomic In-Place Refactoring
 
-When refactoring a function signature, struct layout, or module contract, perform a clean in-place replacement and atomically update all call sites across the codebase in the same commit.
+For internal interfaces, replace the implementation in place and update all callers and tests together. Establish published API, ABI, durable-data, and cross-process contracts first; preserve or migrate them when required.
 
-- **Ban Forwarding Shims**: Do not retain deprecated wrappers like `int old_fn(int x) { return new_fn(x, 0); }`.
+- **Avoid Speculative Forwarding Shims**: Retain wrappers only when a published contract requires compatibility; otherwise remove wrappers like `int old_fn(int x) { return new_fn(x, 0); }`.
 - **Ban Zombie Struct Aliases**: Do not retain `typedef struct new_foo old_foo_t;` unless part of a versioned public ABI boundary.
 - **Ban Commented-Out Ghost Code**: Delete obsolete functions completely; rely on Git history for recovery.
 
@@ -226,7 +226,7 @@ When refactoring a function signature, struct layout, or module contract, perfor
 | Deep nested header `#include`s | Slow compilation, circular dependencies | Forward-declare structs; `#include` only in `.c` |
 | Speculative `struct ops` vtables for single backend | Indirect branch overhead, prevents inlining, obscures debug stack | Direct concrete functions (`disk_storage_read`) |
 | Unnecessary builder boilerplate | Boilerplate sprawl, dynamic memory overhead | Compound literals or simple constructors |
-| Forwarding wrapper shims for old APIs | Dead code bloat, confusing API surface | Clean in-place atomic update across all call sites |
+| Forwarding wrapper shims without a compatibility requirement | Dead code bloat, confusing API surface | Clean in-place atomic update across all call sites |
 
 ---
 

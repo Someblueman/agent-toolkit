@@ -32,3 +32,7 @@
 - Use subagents only when authorized and a bounded independent task can run alongside useful work. Keep straightforward edits and linear investigations local.
 - Assign exclusive edit ownership. The primary agent personally reviews returned changes and the integrated result against the request; consensus is not acceptance evidence.
 - Report what the user can now do or what was learned, verification performed, remaining uncertainty, and Git publication state. Keep routine handoffs concise.
+
+## Communication
+
+- Lead with the outcome and use concise paragraphs, plain language, and concrete wording. Use lists or tables when they make steps or comparisons easier to follow. Avoid stock phrases, unnecessary jargon, and repetitive summaries; include technical detail when it helps the user assess the result.
