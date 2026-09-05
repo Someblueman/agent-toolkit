@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "roots": [
+    "tools/quality",
+    "configs/codex/quality_hook.py",
+    "hooks/session/quality.py"
+  ],
+  "exclude": [
+    ".git/*",
+    ".quality/*",
+    "node_modules/*",
+    "*/node_modules/*",
+    ".venv/*",
+    "target/*",
+    "build/*",
+    "__pycache__/*",
+    "*/__pycache__/*"
+  ],
+  "tools": {
+    "python": {
+      "command": [
+        "{root}/.quality/ruff/bin/ruff"
+      ],
+      "version": "0.16.6",
+      "install": [
+        [
+          "uv",
+          "venv",
+          "{root}/.quality/ruff"
+        ],
+        [
+          "uv",
+          "pip",
+          "install",
+          "--python",
+          "{root}/.quality/ruff/bin/python",
+          "ruff==0.16.6"
+        ]
+      ],
+      "version_args": [
+        "--version"
+      ]
+    }
+  },
+  "checks": [
+    {
+      "name": "Ruff lint + C901",
+      "tool": "python",
+      "args": [
+        "check",
+        "--no-fix",
+        "--extend-select",
+        "C901",
+        "--config",
+        "lint.mccabe.max-complexity=10"
+      ],
+      "patterns": [
+        "*.py",
+        "*.pyi",
+        "tools/quality/bin/quality"
+      ],
+      "files": true,
+      "failure_codes": [
+        1
+      ],
+      "stage": "fast"
+    },
+    {
+      "name": "Ruff format",
+      "tool": "python",
+      "args": [
+        "format",
+        "--check"
+      ],
+      "patterns": [
+        "*.py",
+        "*.pyi",
+        "tools/quality/bin/quality"
+      ],
+      "files": true,
+      "failure_codes": [
+        1
+      ],
+      "stage": "fast"
+    }
+  ],
+  "size": {
+    "limit": 500,
+    "mode": "review"
+  }
+}

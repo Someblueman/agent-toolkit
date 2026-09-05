@@ -36,3 +36,11 @@ Codex refreshes unmodified managed content and reports local conflicts with exit
 - **No agent-specific files in shared dirs.** If a skill needs agent-specific behavior, put it in `configs/<agent>/`.
 
 See [docs/contributing.md](docs/contributing.md) for the full rules.
+
+## Local quality checks
+
+The [quality tool](tools/quality/) provisions pinned native linters and can feed results
+back through Codex lifecycle hooks. Start with `tools/quality/bin/quality setup --dry-run`,
+then `setup`, `doctor`, and `check`. This repository's initial quality configuration covers
+the new tool and adapter. Hook installation is a separate, explicit `install-codex` command;
+no GitHub Actions service is required.

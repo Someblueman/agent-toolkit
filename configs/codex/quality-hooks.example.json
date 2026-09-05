@@ -1,0 +1,8 @@
+{
+  "description": "Example only: install-codex writes quoted absolute commands for this checkout.",
+  "hooks": {
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 /path/to/agent-toolkit/hooks/session/quality.py"}]}],
+    "PostToolUse": [{"matcher": "Bash|apply_patch|Edit|Write", "hooks": [{"type": "command", "command": "python3 /path/to/agent-toolkit/hooks/session/quality.py", "timeout": 300}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "python3 /path/to/agent-toolkit/hooks/session/quality.py", "timeout": 300}]}]
+  }
+}

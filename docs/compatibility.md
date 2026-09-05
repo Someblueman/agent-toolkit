@@ -35,6 +35,11 @@ Legend: ✅ supported · 🟡 partial · ❌ not supported · 🚧 scaffold only
 
 ## General Notes
 
+The [quality tool](../tools/quality/) is a local Python 3.10+ CLI for macOS/Linux. Its
+Codex lifecycle adapter is tested against the documented JSON input/output contract,
+including real Ruff feedback, but has not been qualified inside a live desktop turn.
+Other agents can invoke the CLI; their lifecycle adapters are not implemented.
+
 - **Skills** in this toolkit use a generic `SKILL.md` shape with YAML frontmatter. Agents that natively load `.claude/skills/` or `<agent>/skills/` style content consume these with minimal adapter glue in `configs/<agent>/`.
 - **Hooks** are vendor-portable shell scripts. Each agent's adapter (`configs/<agent>/`) is responsible for invoking them at the right lifecycle point.
 - **Tools** are the most portable layer — standalone executables callable from any agent possessing shell/subprocess execution capabilities.

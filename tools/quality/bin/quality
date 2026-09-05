@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+"""Run repository-owned quality checks without hook-time installation."""
+
+import importlib
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+main = importlib.import_module("quality_lib.cli").main
+
+raise SystemExit(main())
