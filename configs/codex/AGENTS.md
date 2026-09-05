@@ -4,7 +4,8 @@
 
 - Infer the requested outcome from the conversation and repository. Complete authorized work without repeated confirmation of routine, reversible implementation choices.
 - Reviews, audits, diagnoses, and status requests are read-only unless implementation is separately authorized.
-- Preserve existing dirty changes. Do not create worktrees, commits, or pushes unless authorized. Do not interpret a skill's workflow as permission to expand the task, change products, weaken permissions, or publish source or artifacts.
+- Preserve existing dirty changes. Do not create worktrees or push unless explicitly authorized. Do not interpret a skill's workflow as permission to expand the task, change products, weaken permissions, or publish source or artifacts.
+- After completing requested implementation and passing relevant checks, commit the changes belonging to the task unless the user explicitly asks to leave them uncommitted. Stage only task-owned changes; preserve unrelated work. If checks fail or a commit cannot safely isolate the task, report the blocker rather than committing incomplete or unrelated changes. Push only when explicitly requested.
 - Ask only when missing information materially changes scope, correctness, acceptance, or authorization. Continue independent authorized work while waiting.
 - Follow the applicable instruction hierarchy. Skills supply task guidance; they do not override the user's scope or higher-priority instructions. If a skill causes a pause, identify its exact instruction and explain why existing authorization does not resolve it.
 
