@@ -1,22 +1,13 @@
 # hooks/
 
-Hooks are small executable scripts invoked by agents at lifecycle points. They are agent-agnostic: the file in this directory is the canonical implementation, and `configs/<agent>/` provides the wiring for each agent.
+Executable lifecycle hooks and their supporting modules live here. Agent-specific registration examples live in `configs/<agent>/`.
 
-## Categories
+## Quality hook
 
-- `pre-tool/` — run before an agent calls a tool.
-- `post-tool/` — run after an agent calls a tool.
-- `session/` — run at session start, end, or on compaction.
+- `session/quality.py` is the Codex JSON entry point.
+- `session/quality_hook.py` handles prompt baselines, post-tool feedback, and bounded Stop-hook repair continuation.
+- `tools/quality/` supplies the shared checker and language tooling.
 
-## Convention
+The entry point receives event JSON on stdin and returns Codex hook JSON on stdout. A Stop-hook block is expressed in JSON with exit code 0. Per-session fingerprints are stored outside the repository in the user cache.
 
-- Files are executable shell scripts. Bash is preferred; Python with a shebang is fine.
-- The script receives a JSON payload on stdin describing the event.
-- Exit code 0 = pass; non-zero = block (for pre-tool hooks) or warn (for post-tool hooks).
-- Keep them stateless. Anything stateful goes in `tools/`.
-
-## Adding a hook
-
-1. Drop the script in the appropriate category directory.
-2. Document it inline with a header comment.
-3. Add the agent-specific wiring in `configs/<agent>/`.
+See [quality setup](../tools/quality/README.md) for installation and trust instructions. Create other hook categories when an implementation needs them.

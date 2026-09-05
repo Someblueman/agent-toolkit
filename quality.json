@@ -2,7 +2,7 @@
   "version": 1,
   "roots": [
     "tools/quality",
-    "configs/codex/quality_hook.py",
+    "hooks/session/quality_hook.py",
     "hooks/session/quality.py"
   ],
   "exclude": [

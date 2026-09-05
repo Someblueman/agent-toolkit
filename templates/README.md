@@ -1,8 +1,7 @@
 # templates/
 
-Reusable scaffolds that don't fit the skill/hook/agent/tool buckets. Two kinds:
+Reusable content scaffolds that do not fit the skill, hook, agent, or tool directories.
 
 - `prompts/` — short, named prompt fragments ("explain this like I'm five", "summarize this log").
-- `projects/` — project-level scaffolds (e.g. an AGENTS.md template, a `.editorconfig`, a CI workflow).
 
-Templates are referenced by skills/agents but are themselves pure content — no executable code lives here.
+Templates are referenced by skills and agents; they contain no executable code.
