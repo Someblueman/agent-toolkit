@@ -71,3 +71,31 @@ class HookTests(Repository):
         path.write_text(old)
         self.assertEqual(self.cli("install-codex").returncode, 2)
         self.assertEqual(path.read_text(), old)
+
+    def test_outcome_log_records_check_and_bounded_block_without_source(self):
+        self.config("raise SystemExit(1)")
+        self.hook("UserPromptSubmit")
+        self.source.write_text("private_source_marker = 2\n")
+        self.hook("PostToolUse")
+        self.hook("Stop")
+        self.hook("Stop", stop_hook_active=True)
+        path = next((self.root / "state").glob("*.jsonl"))
+        records = [json.loads(line) for line in path.read_text().splitlines()]
+        self.assertEqual(
+            [r["outcome"] for r in records], ["skipped", "fail", "fail", "fail"]
+        )
+        self.assertEqual([r["blocked"] for r in records], [False, False, True, False])
+        self.assertTrue(all(r["duration_ms"] >= 0 for r in records))
+        self.assertNotIn("private_source_marker", path.read_text())
+        self.assertNotIn(str(self.root), path.read_text())
+
+    def test_setup_error_is_logged(self):
+        self.config()
+        self.hook("UserPromptSubmit")
+        self.source.write_text("changed = 2\n")
+        (self.root / "linter.py").unlink()
+        self.hook("Stop")
+        path = next((self.root / "state").glob("*.jsonl"))
+        self.assertEqual(
+            json.loads(path.read_text().splitlines()[-1])["outcome"], "setup_error"
+        )

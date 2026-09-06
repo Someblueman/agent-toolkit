@@ -154,3 +154,15 @@ installed matching version. It checks actual lint failures and Python/Biome/Go/C
 boundaries, plus the real Ruff-to-Codex JSON feedback path. Cabal's fallback installation
 and a live Codex desktop turn are not covered by these tests. Hook protocol tests cover
 read-only turns, missing tools, retry bounds, repair, idempotence and existing-hook conflicts.
+
+### Local outcome log
+
+Opted-in repositories append one JSON record per hook invocation under
+`~/.cache/agent-toolkit/quality/<sha256-of-repository-path>.jsonl` (or
+`QUALITY_HOOK_STATE_DIR`). Records contain UTC time, event, hashed session ID,
+duration in milliseconds, checked/skipped status, pass/fail/setup-error outcome,
+check stage when applicable, and whether Stop blocked. They contain no source,
+command output, or repository path. Logging failures do not alter hook behavior.
+These local logs accumulate until removed; they are not uploaded. Aggregate
+checked outcomes separately from skipped events, and exclude deliberate trials
+when assessing organic catches and repair rates.
