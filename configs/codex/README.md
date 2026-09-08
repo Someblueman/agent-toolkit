@@ -25,7 +25,7 @@ configs/codex/
     └── typescript-engineering/openai.yaml
 ```
 
-The `openai.yaml` files live here (not inside the shared skill) because they are Codex-specific manifests. The shared `skills/<name>/` directories are agent-agnostic. `AGENTS.md` is also Codex-specific. `native-skills/` owns the complete Codex-specific `teamwork-preview` and `workflow` packages, including their interface metadata and references. They are not exposed through OMP's shared-skill symlink.
+The `openai.yaml` files live here (not inside the shared skill) because they are Codex-specific manifests. The shared `skills/<name>/` directories are agent-agnostic. `AGENTS.md` is also Codex-specific. `native-skills/` owns the complete Codex-specific `team-leader`, `teamwork-preview`, and `workflow` packages, including their interface metadata and references. They are not exposed through OMP's shared-skill symlink.
 
 ## Installing
 

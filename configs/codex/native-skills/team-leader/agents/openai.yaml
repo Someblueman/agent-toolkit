@@ -1,0 +1,4 @@
+interface:
+  display_name: "Team Leader"
+  short_description: "Coordinate project worktrees from one main thread"
+  default_prompt: "Use $team-leader to coordinate this project's tasks across worktrees, adopt relevant existing work, and keep me updated here."

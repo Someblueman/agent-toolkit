@@ -9,6 +9,7 @@ profiling-software-performance
 python-engineering
 rust-engineering
 shell-engineering
+team-leader
 teamwork-preview
 typescript-engineering
 workflow
