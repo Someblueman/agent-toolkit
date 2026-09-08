@@ -166,3 +166,18 @@ command output, or repository path. Logging failures do not alter hook behavior.
 These local logs accumulate until removed; they are not uploaded. Aggregate
 checked outcomes separately from skipped events, and exclude deliberate trials
 when assessing organic catches and repair rates.
+
+### Reporting and concurrent edits
+
+Check results begin with pass/fail summaries, with failed checks first. Long
+command output keeps initial and final excerpts; failures show the final excerpt
+first so end-of-run regression findings remain visible. Complete long output is
+saved with private file permissions under `~/.cache/agent-toolkit/quality/reports/`.
+Unlike the metadata-only outcome log, these reports contain raw tool output and
+may include source excerpts. They stay local until manually removed.
+
+Concurrent source/configuration changes produce `snapshot_changed` in the outcome
+log and a retry-on-stable-sources message, not `setup_error`. The CLI retains exit
+code 2 for an inconclusive check. No pass or fast-check cache entry is recorded,
+and no automatic retry or repair block is added; the next eligible event rechecks.
+Missing tools and genuine setup failures still report `setup_error`.

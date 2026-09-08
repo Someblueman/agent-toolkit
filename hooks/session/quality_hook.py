@@ -9,7 +9,14 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from quality_lib.config import SetupError, find_root, fingerprint, inventory, load
+from quality_lib.config import (
+    SetupError,
+    SnapshotChanged,
+    find_root,
+    fingerprint,
+    inventory,
+    load,
+)
 from quality_lib.runner import check
 
 
@@ -143,6 +150,12 @@ def main(stream):
         result = handle(payload, metrics)
         metrics["blocked"] = result.get("decision") == "block"
         return result
+    except SnapshotChanged as exc:
+        metrics["outcome"] = "snapshot_changed"
+        return reply(
+            payload.get("hook_event_name"),
+            f"Quality snapshot changed; retry on stable sources (not a pass): {exc}",
+        )
     except (SetupError, OSError, ValueError, TypeError, KeyError) as exc:
         metrics["outcome"] = "setup_error"
         event = payload.get("hook_event_name") if isinstance(payload, dict) else None

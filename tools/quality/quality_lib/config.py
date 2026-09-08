@@ -11,6 +11,10 @@ class SetupError(ValueError):
     """Configuration or tool availability prevents checking code."""
 
 
+class SnapshotChanged(SetupError):
+    """Concurrent edits invalidated a check; tooling may be healthy."""
+
+
 def find_root(start):
     start = Path(start).resolve()
     for root in (start, *start.parents):

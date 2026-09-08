@@ -4,7 +4,7 @@ import argparse
 import subprocess
 from pathlib import Path
 
-from .config import SetupError, find_root, load
+from .config import SetupError, SnapshotChanged, find_root, load
 from .profiles import PINS
 from .runner import check, doctor
 from .setup import install_codex, provision
@@ -51,6 +51,9 @@ def main():
             else:
                 install_codex(root, Path(__file__).resolve().parents[3], args.dry_run)
         return 0
+    except SnapshotChanged as exc:
+        print(f"SNAPSHOT CHANGED: {exc}")
+        return 2
     except (SetupError, OSError, subprocess.SubprocessError) as exc:
         print(f"SETUP REQUIRED: {exc}")
         return 2

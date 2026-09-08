@@ -2,11 +2,13 @@
 
 import os
 import re
+import shutil
 import signal
 import subprocess
 import tempfile
+from pathlib import Path
 
-from .config import SetupError, fingerprint, inside, inventory, matches
+from .config import SetupError, SnapshotChanged, fingerprint, inside, inventory, matches
 
 
 def run(root, command, timeout=120):
@@ -37,11 +39,35 @@ def run(root, command, timeout=120):
             os.killpg(process.pid, signal.SIGKILL)
             process.wait()
             raise SetupError(f"Timed out after {timeout}s: {command[0]}") from exc
-        output.seek(0)
-        text = output.read(24000).decode("utf-8", errors="replace")
-        if output.read(1):
-            text += "\n[output truncated]"
+        text = summarize_output(output, code)
     return code, text
+
+
+def summarize_output(output, code):
+    size = output.seek(0, os.SEEK_END)
+    output.seek(0)
+    if size <= 24000:
+        return output.read().decode("utf-8", errors="replace")
+    directory = Path.home() / ".cache/agent-toolkit/quality/reports"
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with tempfile.NamedTemporaryFile(
+        dir=directory, suffix=".log", delete=False
+    ) as report:
+        shutil.copyfileobj(output, report)
+        path = report.name
+    output.seek(0)
+    head = output.read(6000).decode("utf-8", errors="replace")
+    output.seek(-6000, os.SEEK_END)
+    tail = output.read().decode("utf-8", errors="replace")
+    sections = (
+        [("Final output", tail), ("Initial output", head)]
+        if code
+        else [("Initial output", head), ("Final output", tail)]
+    )
+    return (
+        f"Full command output: {path}\n[output excerpt; middle omitted]\n"
+        + "\n".join(f"{title}:\n{body}" for title, body in sections)
+    )
 
 
 def doctor(root, config):
@@ -66,7 +92,7 @@ def check(root, config, stage="full"):
     doctor(root, config)
     files = inventory(root, config)
     before = fingerprint(root, config, files)
-    messages, failed = [], False
+    messages, summaries, failed = [], [], False
     for name in files:
         raw = inside(root, name).read_bytes()
         if b"\0" in raw:
@@ -93,11 +119,13 @@ def check(root, config, stage="full"):
         if code != 0 and code not in spec["failure_codes"]:
             raise SetupError(f"{spec['name']} could not check (exit {code}):\n{output}")
         failed |= code != 0
-        messages.append(
-            f"{'FAIL' if code else 'PASS'} {spec['name']}\n{output}".rstrip()
-        )
+        summaries.append(f"{'FAIL' if code else 'PASS'} {spec['name']}")
+        detail = f"{spec['name']}:\n{output}".rstrip()
+        messages.insert(0 if code else len(messages), detail)
     if before != fingerprint(root, config, inventory(root, config)):
-        raise SetupError(
+        raise SnapshotChanged(
             "Sources/configuration changed during checks; rerun on a stable snapshot"
         )
-    return int(failed), "\n".join(messages)
+    return int(failed), "\n".join(
+        sorted(summaries, key=lambda s: not s.startswith("FAIL")) + messages
+    )

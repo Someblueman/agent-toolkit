@@ -1,4 +1,6 @@
+import re
 import sys
+from pathlib import Path
 
 from quality_lib.config import SetupError, load
 from quality_lib.runner import run
@@ -99,3 +101,16 @@ class RunnerTests(Repository):
         result = self.cli("doctor")
         self.assertEqual(result.returncode, 2)
         self.assertIn("another.rs", result.stdout)
+
+    def test_long_failure_preserves_tail_and_complete_report(self):
+        self.config(
+            "print('warning noise\\n' * 5000); print('REGRESSION: score 21 > 15'); raise SystemExit(1)"
+        )
+        result = self.cli("check")
+        self.assertEqual(result.returncode, 1)
+        self.assertTrue(result.stdout.startswith("FAIL"))
+        self.assertLess(result.stdout.index("REGRESSION: score 21 > 15"), 6500)
+        path = Path(re.search(r"Full command output: (.+)", result.stdout)[1])
+        self.addCleanup(path.unlink)
+        self.assertEqual(path.read_text().count("warning noise"), 5000)
+        self.assertIn("REGRESSION", path.read_text())

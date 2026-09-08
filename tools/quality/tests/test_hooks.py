@@ -99,3 +99,22 @@ class HookTests(Repository):
         self.assertEqual(
             json.loads(path.read_text().splitlines()[-1])["outcome"], "setup_error"
         )
+
+    def test_snapshot_change_reports_retry_and_does_not_cache_success(self):
+        self.config(
+            "from pathlib import Path; Path('src/example.py').write_text('mutated')"
+        )
+        self.hook("UserPromptSubmit")
+        self.source.write_text("changed = 3\n")
+        result = self.hook("PostToolUse")
+        text = result["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("snapshot changed; retry", text)
+        self.assertNotIn("setup required", text)
+        path = next((self.root / "state").glob("*.jsonl"))
+        self.assertEqual(
+            json.loads(path.read_text().splitlines()[-1])["outcome"], "snapshot_changed"
+        )
+        self.config()
+        self.assertIn(
+            "PASS", self.hook("PostToolUse")["hookSpecificOutput"]["additionalContext"]
+        )
