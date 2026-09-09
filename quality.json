@@ -3,7 +3,9 @@
   "roots": [
     "tools/quality",
     "hooks/session/quality_hook.py",
-    "hooks/session/quality.py"
+    "hooks/session/quality.py",
+    "configs/codex/native-skills/team-leader/scripts",
+    "scripts/test_leader_completion.py"
   ],
   "exclude": [
     ".git/*",

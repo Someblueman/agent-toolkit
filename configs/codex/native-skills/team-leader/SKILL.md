@@ -11,6 +11,14 @@ for following up until the agreed work is verified or concretely blocked.
 This skill works across projects; discover each repository's instructions,
 toolchain, and acceptance checks instead of assuming project-specific commands.
 
+Selecting a roadmap item is enough input: derive its requirements, dependencies,
+checks, and endpoint from the roadmap, repository, and existing authorization.
+Own implementation, review, repair, verification, commit, and authorized integration.
+Do not ask the user to redispatch completed workers or repeat settled integration
+instructions. Do not select the next roadmap item without authorization.
+Implementation under this workflow includes bounded idle recovery for the selected
+assignment. Status questions and read-only reviews do not enroll new assignments.
+
 ## Establish ownership
 
 Resolve the requested projects and scope with `list_projects` and `list_threads`.
@@ -42,6 +50,12 @@ values as unknown until verified. Distinguish queued, starting, working, blocked
 ready for review, verified, and integrated; a finished turn is not acceptance.
 Keep a short section for decisions and the next actions, not a second transcript.
 After interruption, reconcile the roster with live threads and Git before acting.
+
+For hands-off execution, use [completion and recovery](references/completion.md).
+Its JSON header belongs in this same roster, not a second task ledger. Update the
+roster whenever a worker hands back, review finds a defect, or integration changes.
+Keep actual app task identities; do not switch to shared-process subagents halfway
+through a wave merely because the leader resumed in a different turn.
 
 ## Dispatch through app tasks
 
@@ -80,9 +94,21 @@ as capacity becomes available. For a repeated blocker without new evidence,
 stop retrying and report the decision or external change needed. Honor agreed
 time and cost bounds; do not manufacture additional work to keep workers busy.
 
-A skill is not a scheduler. Stay with active authorized work, but do not promise
-future monitoring after the turn ends. When the user asks for recurring or later
-follow-up, use the app's thread heartbeat automation within that authorization.
+Continue waiting after a repair request, consume the repaired result, and recheck
+the affected acceptance criteria. Before closing the selected item, obtain one
+focused independent review against its original requirements and actual evidence.
+The reviewer identifies unmet requirements with evidence; it does not open a general
+cleanup campaign. The leader personally checks the integrated result. A worker
+handoff, review report, repair dispatch, or status answer is not the task endpoint.
+Answer status questions in commentary and resume the outstanding authorized work.
+Missing local tool setup and failures caused by this work are repair steps when
+repair is within scope, not automatic reasons to return the task to the user.
+
+A skill is not a scheduler. Stay with active authorized work. A request for
+hands-off completion authorizes bounded recovery of that selected assignment:
+install its completion check and create/reuse a heartbeat on this leader thread
+as described in the recovery reference. Confirm the heartbeat exists before
+promising recovery. It does not authorize other roadmap items or publication.
 
 ## Integrate and report
 
