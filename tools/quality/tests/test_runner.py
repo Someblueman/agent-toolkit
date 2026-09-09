@@ -114,3 +114,15 @@ class RunnerTests(Repository):
         self.addCleanup(path.unlink)
         self.assertEqual(path.read_text().count("warning noise"), 5000)
         self.assertIn("REGRESSION", path.read_text())
+
+    def test_translation_unit_scope_preserves_header_size_policy(self):
+        config = self.config()
+        self.source.unlink()
+        (self.root / "src/a.c").write_text("int x;\n")
+        (self.root / "src/a.h").write_text("#pragma once\nint x;\n")
+        config["checks"][0].update(patterns=["*.c", "*.h"], scope="translation-units")
+        config["size"] = {"limit": 1, "mode": "error"}
+        self.write_config(config)
+        result = self.cli("check")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("SIZE src/a.h", result.stdout)

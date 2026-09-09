@@ -71,7 +71,7 @@ project manifest and lockfile. Inspect the setup dry-run first.
 - `exclude`: repository-relative glob patterns. No blanket exclusion of `packages/`.
 - `tools`: executable argument prefix, exact reported version, version arguments and
   explicit installation commands. An empty `install` list means externally managed.
-- `checks`: name, tool reference, arguments, source patterns, `fast`/`full` stage,
+- `checks`: name, tool reference, arguments, source patterns, `fast`/`full`/`manual` stage,
   whether to append matching filenames, and native `failure_codes` (e.g. Cargo 101).
 - `size`: physical-line threshold and `review` or `error` mode; defaults to advisory 500.
 
@@ -90,7 +90,7 @@ The size check counts LF/CRLF physical lines, including comments and blanks, and
 unterminated final line. It does not compute SLOC or parse inline test modules. Halstead
 and universal cognitive metrics are not implemented; native coverage is explicit.
 
-`check --fast` runs fast checks; `check` runs both stages. Add the repository's existing
+`check --fast` runs fast checks; `check` runs every stage, including manual checks. Add the repository's existing
 type checks and invariant tests as full-stage commands with their own tool/version
 entries. The starter profiles do not guess acceptance tests, feature matrices or test
 directories. Compiler/build failures use each check's declared exit-code convention.
@@ -137,7 +137,7 @@ the configured inventory, so shell edits do not have to be inferred from command
 Codex requires review/trust of new or changed hooks; installation does not establish it.
 The adapter follows the [official Codex hook contract](https://learn.chatgpt.com/docs/hooks).
 Post-tool feedback cannot undo an edit. Local hooks are guardrails, not an unbypassable
-security boundary. No live desktop hook was enabled by this implementation session.
+security boundary. Hook activation and trust are separate from protocol verification.
 
 ## Verification
 
@@ -181,3 +181,48 @@ log and a retry-on-stable-sources message, not `setup_error`. The CLI retains ex
 code 2 for an inconclusive check. No pass or fast-check cache entry is recorded,
 and no automatic retry or repair block is added; the next eligible event rechecks.
 Missing tools and genuine setup failures still report `setup_error`.
+
+
+### Incremental lifecycle checks and worktrees
+
+Hooks compare content against the turn baseline and pass only changed files to
+file-based checks. This covers Ruff, Biome, ESLint, ShellCheck and HLint. New and
+untracked sources are included. Deletions and changes to native configuration,
+lockfiles, checker commands or quality policy invalidate the affected scope.
+Successful results can be reused at Stop; failed results are never cached as passes.
+Explicit `quality check` always checks the full configured inventory without this cache.
+A quiet hook means no new findings in the selected scope, not whole-project acceptance.
+
+Optional check fields in version 1:
+
+- `scope`: `files` (default with `files: true`), `project` (default otherwise), or
+  `translation-units`. Project commands keep their native package/workspace semantics.
+  C translation-unit checks select changed C/C++ sources; header changes select all
+  configured translation units. File scopes require `files: true`.
+- `inputs`: checkout-relative glob patterns for configuration and other dependencies,
+  including paths outside `roots`. A matching change selects all files for that check.
+  Omission uses conservative common native-config patterns. Literal paths may include
+  generated inputs such as `build/compile_commands.json`. Declare custom configs,
+  sourced shell libraries and external checker dependencies here.
+- `stage: manual`: excluded from lifecycle hooks, retained by explicit `quality check`.
+  The C starter keeps full clang-tidy here and uses only cognitive complexity in hooks.
+- `{files}` in command arguments: insert selected filenames at this position instead
+  of appending them, for commands with trailing compiler arguments.
+
+Rust formatting/Clippy and Go checks retain project scope and native build caches;
+small-edit latency depends on project size and cache warmth. Use `scope: project`
+for JS rules with cross-file effects or HLint configurations with shared CPP inputs,
+and declare relevant dependency files. A one-to-two-second target is realistic for
+ordinary file linting, not a guarantee for builds or broad configuration/header edits.
+
+State and locks are keyed by the resolved checkout path, not Git's common directory.
+Linked worktrees have independent baselines, success caches and locks. Concurrent
+sessions in one checkout receive a busy/retry result instead of running duplicate
+checks. A busy result is not a pass. Source changes during checking also require retry.
+
+Each worktree needs its own `quality.json`, provisioned tools/dependencies and hook
+registration (`quality --root /path/to/worktree setup`, then `install-codex`). Tracked
+configuration follows Git normally; ignored `.quality`, build and node_modules
+folders do not. Missing tools are reported without borrowing another checkout's tools
+or installing anything during a hook. Global hook registration is not required or
+changed. Logs include selected file and reused-check counts when applicable.

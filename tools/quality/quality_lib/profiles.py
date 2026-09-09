@@ -280,6 +280,7 @@ def build(root, profile, version=None, roots=None):
         )
         checks = [spec("HLint", [], patterns)]
         native = reuse_hlint(native)
+    configure_incremental(profile, checks)
     return {
         "version": 1,
         "roots": roots or ["."],
@@ -298,3 +299,72 @@ def build(root, profile, version=None, roots=None):
         "checks": checks,
         "size": {"limit": 500, "mode": "review"},
     }
+
+
+def configure_incremental(profile, checks):
+    inputs = {
+        "python": ["**/pyproject.toml", "**/ruff.toml", "**/.ruff.toml", "**/uv.lock"],
+        "biome": [
+            "**/biome.json*",
+            "**/quality.biome.json",
+            "**/package.json",
+            "**/*lock*",
+            "**/tsconfig*.json",
+        ],
+        "eslint": [
+            "**/eslint.config.*",
+            "**/package.json",
+            "**/*lock*",
+            "**/tsconfig*.json",
+        ],
+        "shell": ["**/.shellcheckrc"],
+        "c-cpp": [
+            "**/.clang-tidy",
+            "build/compile_commands.json",
+            "Makefile",
+            "CMakeLists.txt",
+        ],
+        "rust": [
+            "**/Cargo.toml",
+            "**/Cargo.lock",
+            "**/rust-toolchain*",
+            "**/*rustfmt.toml",
+            "**/.cargo/config*",
+            "**/build.rs",
+        ],
+        "go": [
+            "**/go.mod",
+            "**/go.sum",
+            "**/go.work*",
+            "**/.golangci.*",
+            "**/quality.golangci.json",
+        ],
+        "haskell": [
+            "**/.hlint.yaml",
+            "**/*.cabal",
+            "**/cabal.project*",
+            "**/stack.yaml*",
+        ],
+    }[profile]
+    for check in checks:
+        check["inputs"] = inputs
+    if profile == "c-cpp":
+        checks[0]["scope"] = "translation-units"
+        checks[0]["stage"] = "manual"
+        cognitive = dict(checks[0], name="C/C++ cognitive complexity", stage="full")
+        cognitive["args"] = [
+            "-p",
+            "build",
+            "--checks=-*,readability-function-cognitive-complexity",
+            "--warnings-as-errors=readability-function-cognitive-complexity",
+            "--config="
+            + json.dumps(
+                {
+                    "InheritParentConfig": True,
+                    "CheckOptions": {
+                        "readability-function-cognitive-complexity.Threshold": 15
+                    },
+                }
+            ),
+        ]
+        checks.insert(0, cognitive)

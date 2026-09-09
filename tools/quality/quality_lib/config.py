@@ -1,7 +1,6 @@
 """Validate the small, repository-owned command contract."""
 
 import fnmatch
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -71,6 +70,8 @@ def validate(data):
         raise SetupError("At least one check is required")
     for check in data["checks"]:
         validate_check(check, data["tools"])
+    if len({c["name"] for c in data["checks"]}) != len(data["checks"]):
+        raise SetupError("Check names must be unique")
     size = data["size"]
     if set(size) != {"limit", "mode"} or type(size["limit"]) is not int:
         raise SetupError("size requires integer limit and mode")
@@ -92,7 +93,7 @@ def validate_tool(tool):
 
 
 def validate_check(check, tools):
-    if set(check) != {
+    if set(check) - {"scope", "inputs"} != {
         "name",
         "tool",
         "args",
@@ -104,6 +105,18 @@ def validate_check(check, tools):
         raise SetupError(
             "Check requires name/tool/args/patterns/stage/files/failure_codes"
         )
+    if check.get("scope", "files" if check["files"] else "project") not in (
+        "files",
+        "project",
+        "translation-units",
+    ):
+        raise SetupError("Invalid incremental scope")
+    if check.get("scope") in ("files", "translation-units") and not check["files"]:
+        raise SetupError("File scopes require files=true")
+    if "inputs" in check:
+        strings(check["inputs"], "inputs")
+        if any(Path(p).is_absolute() or ".." in Path(p).parts for p in check["inputs"]):
+            raise SetupError("Check inputs must stay within the checkout")
     codes = check["failure_codes"]
     if (
         not isinstance(codes, list)
@@ -115,7 +128,10 @@ def validate_check(check, tools):
         raise SetupError("Check references an unknown tool")
     strings(check["args"], "args")
     strings(check["patterns"], "patterns", True)
-    if check["stage"] not in ("fast", "full") or type(check["files"]) is not bool:
+    if (
+        check["stage"] not in ("fast", "full", "manual")
+        or type(check["files"]) is not bool
+    ):
         raise SetupError("Invalid check stage or files flag")
     if not isinstance(check["name"], str) or not check["name"]:
         raise SetupError("Check name is required")
@@ -194,53 +210,3 @@ def walk(root, path, exclude):
             if item.is_symlink():
                 raise SetupError(f"Symlink in source tree: {item}")
         yield from (Path(base) / f for f in files)
-
-
-def fingerprint(root, config, files):
-    digest = hashlib.sha256(json.dumps(config, sort_keys=True).encode())
-    # Include native configuration and lockfiles, including nested package configs.
-    extra = {
-        "quality.json",
-        "pyproject.toml",
-        "ruff.toml",
-        ".ruff.toml",
-        "uv.lock",
-        "biome.json",
-        "biome.jsonc",
-        "package.json",
-        "package-lock.json",
-        "pnpm-lock.yaml",
-        "yarn.lock",
-        "Cargo.toml",
-        "Cargo.lock",
-        "go.mod",
-        "go.sum",
-        ".golangci.yml",
-        ".golangci.yaml",
-        ".clang-tidy",
-        ".hlint.yaml",
-        "quality.biome.json",
-        "quality.golangci.json",
-        ".shellcheckrc",
-        "eslint.config.js",
-        "eslint.config.mjs",
-        "eslint.config.cjs",
-        "rust-toolchain.toml",
-        "rust-toolchain",
-    }
-    selected = set(files)
-    for name in config["roots"]:
-        path = root / name
-        if path.is_dir():
-            selected.update(
-                p.relative_to(root).as_posix()
-                for p in walk(root, path, config["exclude"])
-                if p.name in extra
-                and p.is_file()
-                and not matches(p.relative_to(root).as_posix(), config["exclude"])
-            )
-    selected.update(p.name for p in root.iterdir() if p.name in extra)
-    for name in sorted(selected):
-        digest.update(name.encode())
-        digest.update(inside(root, name).read_bytes())
-    return digest.hexdigest()

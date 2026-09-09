@@ -13,11 +13,9 @@ from quality_lib.config import (
     SetupError,
     SnapshotChanged,
     find_root,
-    fingerprint,
-    inventory,
     load,
 )
-from quality_lib.runner import check
+from quality_lib.incremental import digest, evaluate, snapshot
 
 
 def reply(event, text, block=False):
@@ -39,8 +37,6 @@ def handle(payload, metrics):
     except SetupError:
         return {}  # Global installation is inert outside opted-in repositories.
     config = load(root)
-    files = inventory(root, config)
-    current = fingerprint(root, config, files)
     session = payload.get("session_id")
     if not isinstance(session, str) or not session:
         raise SetupError("Missing hook session_id")
@@ -53,33 +49,55 @@ def handle(payload, metrics):
     )
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     path = directory / (key + ".json")
-    with (directory / (key + ".lock")).open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    # One lock per physical checkout, never per shared git common directory.
+    checkout = hashlib.sha256(str(root).encode()).hexdigest()
+    cache_path = directory / (checkout + ".checks.json")
+    with (directory / (checkout + ".lock")).open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            metrics["outcome"] = "busy"
+            return reply(
+                event,
+                "Quality check already running in this checkout; retry on the next event (not a pass).",
+            )
+        # Compute under the lock, since another session may just have finished.
+        current = snapshot(root, config)
         state = json.loads(path.read_text()) if path.exists() else {}
-        result = process(event, payload, root, config, current, state, metrics)
-        with tempfile.NamedTemporaryFile(mode="w", dir=directory, delete=False) as f:
-            json.dump(state, f)
-        os.replace(f.name, path)
+        if state.get("version") != 2:
+            state = {"version": 2}
+        cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
+        result = process(event, payload, root, config, current, state, cache, metrics)
+        for target, value in ((path, state), (cache_path, cache)):
+            with tempfile.NamedTemporaryFile(
+                mode="w", dir=directory, delete=False
+            ) as f:
+                json.dump(value, f)
+            os.replace(f.name, target)
     return result
 
 
-def process(event, payload, root, config, current, state, metrics):
+def process(event, payload, root, config, current, state, cache, metrics):
     if event == "UserPromptSubmit":
         if not state.get("pending"):
             state.clear()
+            state["version"] = 2
             state["baseline"] = current
         return {}
     if current == state.get("baseline"):
         return {}
     if event == "PostToolUse":
-        if current == state.get("fast_checked"):
+        if digest(current) == state.get("fast_checked"):
             return {}
-        code, output = measured_check(root, config, "fast", metrics)
-        state["fast_checked"] = current
+        code, output = measured_check(
+            root, config, "fast", state, current, cache, metrics
+        )
+        state["fast_checked"] = digest(current)
         return reply(event, output) if output else {}
-    code, output = measured_check(root, config, "full", metrics)
+    code, output = measured_check(root, config, "full", state, current, cache, metrics)
     if not code:
         state.clear()
+        state["version"] = 2
         state["baseline"] = current
         return {}
     if payload.get("stop_hook_active") or state.get("pending"):
@@ -100,12 +118,11 @@ def process(event, payload, root, config, current, state, metrics):
     )
 
 
-def measured_check(root, config, stage, metrics):
-    metrics["checked"] = True
+def measured_check(root, config, stage, state, current, cache, metrics):
     metrics["stage"] = stage
-    code, output = check(root, config, stage)
-    metrics["outcome"] = "fail" if code else "pass"
-    return code, output
+    return evaluate(
+        root, config, state.get("baseline", {}), current, cache, stage, metrics
+    )
 
 
 def log_outcome(payload, metrics, started):
