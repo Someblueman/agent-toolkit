@@ -64,6 +64,8 @@ coordinator. Use a clear prompt equivalent to:
 
 > Resume only the selected assignment recorded in [absolute roster path], using
 > the team-leader skill. First honor newer user cancellation or scope changes.
+> Inspect the preceding turn: if it was interrupted/cancelled, pause recovery unless
+> the user explicitly resumed afterward. A scheduled prompt is not user resume.
 > Reconcile live worker states and refresh `waiting_on` without resetting counters.
 > Run `python3 [installed completion.py] check [leader-thread-id]`. If the check
 > exits nonzero or does not return `decision: block`, pause this heartbeat and

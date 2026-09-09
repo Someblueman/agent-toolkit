@@ -45,6 +45,8 @@ It does not establish native Stop enforcement or completion/integration of the
 entire Hydra wave. The existing heartbeat remains bounded by the roster deadline
 (10 September 2026, 01:42:23 UTC), cancellation, and no-progress checks. It must
 pause on completion, a concrete blocker, or exhausted recovery bounds.
+The recovery prompt also checks for an interrupted preceding turn, so it must not
+treat its own scheduled invocation as authorization to undo a user's stop.
 
 The scheduler's stored next-run time, rather than an estimate from the interval,
 was used to verify execution. Do not promise exact five-minute wall-clock recovery.
