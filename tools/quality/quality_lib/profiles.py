@@ -90,6 +90,7 @@ def spec(name, args, patterns, files=True, stage="fast", tool_name="native"):
         "files": files,
         "failure_codes": [1, 101] if name in ("Clippy", "rustfmt") else [1],
         "stage": stage,
+        "kind": "lint",
     }
 
 

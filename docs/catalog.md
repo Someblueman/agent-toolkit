@@ -66,7 +66,7 @@ Codex's `.system` skills and plugin-cache skills remain vendor-managed; their so
 | Name | Description | Status |
 |------|-------------|--------|
 | [fanout](../tools/fanout/) | Run bounded one-shot local workers (Agy / OpenCode) and collect structured results. | stable |
-| [quality](../tools/quality/) | Provision pinned native linters, check source/complexity/size, and install project-local Codex feedback hooks. | draft |
+| [quality](../tools/quality/) | Provision pinned linters and run repository-defined behavioral checks through automatic preflight, edit feedback and completion hooks. | draft |
 
 ## Notable scripts
 

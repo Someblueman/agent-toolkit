@@ -5,7 +5,8 @@ Executable lifecycle hooks and their supporting modules live here. Agent-specifi
 ## Quality hook
 
 - `session/quality.py` is the Codex JSON entry point.
-- `session/quality_hook.py` handles prompt baselines, post-tool feedback, and bounded Stop-hook repair continuation.
+- `session/quality_hook.py` handles automatic tool preflight, prompt baselines,
+  post-tool lint/test feedback, and bounded Stop-hook acceptance and repair continuation.
 - `tools/quality/` supplies the shared checker and language tooling.
 
 The entry point receives event JSON on stdin and returns Codex hook JSON on stdout. A Stop-hook block is expressed in JSON with exit code 0. Per-session fingerprints are stored outside the repository in the user cache.

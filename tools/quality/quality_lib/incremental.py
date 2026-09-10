@@ -50,7 +50,9 @@ def digest(value):
 
 
 def file_hash(root, name):
-    return hashlib.sha256(inside(root, name).read_bytes()).hexdigest()
+    path = inside(root, name)
+    executable = (path.stat().st_mode & 0o111).to_bytes(2, "big")
+    return hashlib.sha256(executable + path.read_bytes()).hexdigest()
 
 
 def config_candidates(root, config):
@@ -103,7 +105,14 @@ def tool_stamp(root, tool):
             continue
         try:
             stat = path.stat()
-            stamps.append([str(path.resolve()), stat.st_mtime_ns, stat.st_size])
+            stamps.append(
+                [
+                    str(path.resolve()),
+                    stat.st_mtime_ns,
+                    stat.st_size,
+                    stat.st_mode & 0o111,
+                ]
+            )
         except OSError:
             stamps.append([str(path), "missing"])
     return stamps
@@ -212,9 +221,9 @@ def evaluate(root, config, baseline, current, cache, stage, metrics):
         raise SnapshotChanged(
             "Sources/configuration changed during checks; retry on stable sources"
         )
-    metrics["outcome"] = (
-        "fail" if failed else ("pass" if metrics["checked"] else "skipped")
-    )
+    metrics["outcome"] = "fail" if failed else "pass"
+    if not metrics["checked"]:
+        metrics["outcome"] = "cached" if metrics.get("cached_checks") else "skipped"
     return int(failed), "\n".join(
         sorted(summaries, key=lambda s: not s.startswith("FAIL")) + details
     )

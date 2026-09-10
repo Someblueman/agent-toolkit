@@ -1,6 +1,7 @@
 # Local quality checks
 
-Provision actual linters, enable complexity rules, and feed findings back to Codex.
+Provision actual linters and run repository-defined tests, builds and type checks
+automatically through lifecycle hooks. Commands remain available for diagnosis and reruns.
 The checker runs locally; it has no GitHub Actions dependency. Python 3.10+ and
 macOS/Linux are supported. The Codex adapter uses POSIX file locking.
 
@@ -15,9 +16,16 @@ tools/quality/bin/quality doctor
 tools/quality/bin/quality check
 ```
 
-The checked-in `quality.json` deliberately covers this new tool and its Codex adapter,
-not every historical example or skill in the toolkit. Ruff is installed under the
-ignored `.quality/` directory. Setup does not install Codex hooks.
+The checked-in `quality.json` covers this tool, its Codex adapter, the installer and
+leader completion behavior. Historical examples and other skill helpers are not all
+covered. Ruff is installed under the ignored `.quality/` directory; Python 3.13.2 is
+externally managed for tests. Setup does not install Codex hooks.
+
+With the hooks active, the first prompt checks tool availability and reports the
+declared verification coverage. Relevant edits run Ruff and the installer tests,
+including installation of the current packages into a temporary destination. Stop
+also runs the quality and leader completion suites when their inputs changed.
+Agents do not have to issue test commands to receive these results.
 
 For another repository, select its existing language tools explicitly:
 
@@ -73,6 +81,10 @@ project manifest and lockfile. Inspect the setup dry-run first.
   explicit installation commands. An empty `install` list means externally managed.
 - `checks`: name, tool reference, arguments, source patterns, `fast`/`full`/`manual` stage,
   whether to append matching filenames, and native `failure_codes` (e.g. Cargo 101).
+- Optional check `kind`: `lint`, `typecheck`, `test`, `build`, `invariant` or `unspecified`
+  (the default for existing configurations). Doctor and automatic preflight use this
+  declaration to identify files without an automated behavioral check. This is a
+  configuration diagnostic, not measured test coverage or proof of test quality.
 - `size`: physical-line threshold and `review` or `error` mode; defaults to advisory 500.
 
 `{root}` expands to the absolute repository path. Commands are argument arrays; shell
@@ -90,21 +102,50 @@ The size check counts LF/CRLF physical lines, including comments and blanks, and
 unterminated final line. It does not compute SLOC or parse inline test modules. Halstead
 and universal cognitive metrics are not implemented; native coverage is explicit.
 
-`check --fast` runs fast checks; `check` runs every stage, including manual checks. Add the repository's existing
-type checks and invariant tests as full-stage commands with their own tool/version
-entries. The starter profiles do not guess acceptance tests, feature matrices or test
-directories. Compiler/build failures use each check's declared exit-code convention.
+`check --fast` runs fast checks; `check` runs every stage, including manual checks.
+Register existing focused tests and type checks as `fast`, and broader acceptance
+as `full`, with their own tool/version entries. Use `scope: project`, `files: false`
+for a suite, and declare its source, test, fixture, configuration and lockfile inputs.
+Inputs outside `roots` are supported. Deletions and executable-bit changes also
+invalidate results. Starter profiles provide linting; they do not guess behavioral
+tests, feature matrices or test directories. Compiler/build failures use each check's
+declared exit-code convention.
+
+For example, with `src` and `tests` in `roots` and an externally managed `python-runtime`
+tool configured for the repository's interpreter, this check runs automatically at Stop:
+
+```json
+{
+  "name": "Application behavior",
+  "kind": "test",
+  "tool": "python-runtime",
+  "args": ["-m", "unittest", "discover", "-s", "tests", "-v"],
+  "patterns": ["src/*.py", "tests/*.py"],
+  "inputs": ["fixtures/*", "pyproject.toml", "uv.lock"],
+  "files": false,
+  "scope": "project",
+  "stage": "full",
+  "failure_codes": [1]
+}
+```
+
+Use deterministic fixtures and declare all relevant inputs before reusing results.
+Tests that depend on untracked external service state cannot establish a reusable
+source-based result; provide a reproducible local fixture or retain explicit validation
+for that external boundary.
 
 The checker detects source/configuration changes during a run rather than recording a
 pass for an unstable snapshot. Each command has a 120-second timeout, with process-group
-cleanup; use a repository-specific bounded command for a different workload. Long test
-suites are better invoked explicitly until their duration fits the hook budget.
+cleanup; use a repository-specific bounded command for a different workload. Split
+long suites into focused targets or provide local fixtures so required acceptance
+can fit within the hook budget.
 
 Exit codes: **0** = configured checks passed (size review findings may remain);
 **1** = native check/build failure or a strict size violation; **2** = unavailable tool,
 wrong version, invalid configuration, empty coverage, launch failure or timeout.
-Doctor validates configured tools/versions and inventory; it is not a native rule
-conformance test. The real-tool boundary tests below provide that additional evidence.
+Doctor validates configured tools/versions and inventory, lists each stage and check
+kind, and reports missing behavioral declarations. It is not a native rule conformance
+test. The real-tool boundary tests below provide that additional evidence.
 
 ## Codex integration
 
@@ -120,13 +161,24 @@ instead of being overwritten. The command references this checkout with an absol
 path. Keep the checkout at that location or review/update the hook command after moving it.
 It does not change the global Codex installer, feature flags, permissions or hook trust.
 
-- `UserPromptSubmit` records the source/config baseline for this turn.
+- `UserPromptSubmit` performs preflight on the first prompt in a session and after
+  quality configuration, source inventory, checker or tool changes. All tools required by automated
+  checks must be available, including tools for currently untouched languages.
+  Successful preflight is reused while those inputs remain unchanged. It does not
+  execute tests/builds or install dependencies.
+- The prompt records the initial source/config baseline. Later steering prompts
+  preserve edits that are still awaiting completion checks.
 - `PostToolUse` checks the source inventory after Bash/patch events when content changed,
   using fast checks. Identical content isn't checked repeatedly.
-- `Stop` runs full checks when content changed. A violation asks Codex to continue once.
-  Persistent failure is then reported without an endless repair loop.
-- Setup errors are reported as unavailable, never passed and never an automatic install.
-- Read-only turns with unchanged content remain inert. Pre-existing violations are not
+- `Stop` runs the affected fast and full checks when inputs changed. A violation asks
+  Codex to continue once. Persistent failure remains unresolved and is reported without
+  an endless repair loop; it never becomes a successful baseline.
+- Missing tools, invalid configuration, timeouts, busy locks and changing snapshots
+  cannot pass completion. Stop requests one retry; `stop_hook_active` continuations
+  report a blocker if checking still cannot finish. Post-tool events report the issue
+  for the next eligible event. There is no automatic installation.
+- Read-only turns perform preflight but do not run checks when inputs are unchanged.
+  Pre-existing violations are not
   automatically grandfathered; feedback explicitly limits repairs to authorized scope.
 
 The adapter uses per-session state under `~/.cache/agent-toolkit/quality` (override with
@@ -160,12 +212,14 @@ read-only turns, missing tools, retry bounds, repair, idempotence and existing-h
 Opted-in repositories append one JSON record per hook invocation under
 `~/.cache/agent-toolkit/quality/<sha256-of-repository-path>.jsonl` (or
 `QUALITY_HOOK_STATE_DIR`). Records contain UTC time, event, hashed session ID,
-duration in milliseconds, checked/skipped status, pass/fail/setup-error outcome,
+duration in milliseconds, checked/skipped status, pass/fail/cached/setup-error outcome,
 check stage when applicable, and whether Stop blocked. They contain no source,
 command output, or repository path. Logging failures do not alter hook behavior.
 These local logs accumulate until removed; they are not uploaded. Aggregate
 checked outcomes separately from skipped events, and exclude deliberate trials
-when assessing organic catches and repair rates.
+when assessing organic catches and repair rates. `cached` means a previous successful
+result was reused for identical selected inputs; `skipped` establishes no new result.
+The `preflight` flag records successful availability checks separately from executed tests.
 
 ### Reporting and concurrent edits
 
@@ -179,8 +233,9 @@ may include source excerpts. They stay local until manually removed.
 Concurrent source/configuration changes produce `snapshot_changed` in the outcome
 log and a retry-on-stable-sources message, not `setup_error`. The CLI retains exit
 code 2 for an inconclusive check. No pass or fast-check cache entry is recorded,
-and no automatic retry or repair block is added; the next eligible event rechecks.
-Missing tools and genuine setup failures still report `setup_error`.
+and post-tool events recheck on the next eligible event. At Stop, an inconclusive result
+requests one retry before reporting a blocker. Missing tools and genuine setup failures
+still report `setup_error`.
 
 
 ### Incremental lifecycle checks and worktrees

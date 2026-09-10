@@ -71,16 +71,43 @@ def summarize_output(output, code):
     )
 
 
-def doctor(root, config):
+def doctor(root, config, *, automated=False):
     messages = []
-    for name, tool in config["tools"].items():
-        verify_tool(root, name, tool)
-        messages.append(f"{name}: {tool['version']}")
-    files = inventory(root, config)
-    messages.append(
-        f"Source coverage: {len(files)} files; "
-        + ", ".join(c["name"] for c in config["checks"])
+    required = (
+        {c["tool"] for c in config["checks"] if c["stage"] != "manual"}
+        if automated
+        else set(config["tools"])
     )
+    for name in sorted(required):
+        verify_tool(root, name, config["tools"][name])
+        messages.append(f"{name}: {config['tools'][name]['version']}")
+    return messages + coverage(root, config)
+
+
+def coverage(root, config):
+    files = inventory(root, config)
+    messages = [f"Configured source inventory: {len(files)} files"]
+    for stage in ("fast", "full", "manual"):
+        names = [
+            f"{c['name']} ({c.get('kind', 'unspecified')})"
+            for c in config["checks"]
+            if c["stage"] == stage
+        ]
+        label = "manual (excluded from hooks)" if stage == "manual" else stage
+        messages.append(f"{label}: {', '.join(names) or 'none'}")
+    behavioral = [
+        p
+        for c in config["checks"]
+        if c["stage"] != "manual" and c.get("kind") in ("test", "invariant")
+        for p in c["patterns"] + c.get("inputs", [])
+    ]
+    undeclared = [f for f in files if not matches(f, behavioral)]
+    if undeclared:
+        messages.append(
+            f"No automated behavioral check declared for {len(undeclared)} files: "
+            + ", ".join(undeclared[:10])
+            + ". Configure kind=test/invariant and its actual inputs; this is not test coverage."
+        )
     return messages
 
 

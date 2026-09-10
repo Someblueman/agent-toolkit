@@ -93,7 +93,7 @@ def validate_tool(tool):
 
 
 def validate_check(check, tools):
-    if set(check) - {"scope", "inputs"} != {
+    if set(check) - {"scope", "inputs", "kind"} != {
         "name",
         "tool",
         "args",
@@ -105,18 +105,16 @@ def validate_check(check, tools):
         raise SetupError(
             "Check requires name/tool/args/patterns/stage/files/failure_codes"
         )
-    if check.get("scope", "files" if check["files"] else "project") not in (
-        "files",
-        "project",
-        "translation-units",
+    if check.get("kind", "unspecified") not in (
+        "unspecified",
+        "lint",
+        "typecheck",
+        "test",
+        "build",
+        "invariant",
     ):
-        raise SetupError("Invalid incremental scope")
-    if check.get("scope") in ("files", "translation-units") and not check["files"]:
-        raise SetupError("File scopes require files=true")
-    if "inputs" in check:
-        strings(check["inputs"], "inputs")
-        if any(Path(p).is_absolute() or ".." in Path(p).parts for p in check["inputs"]):
-            raise SetupError("Check inputs must stay within the checkout")
+        raise SetupError("Invalid check kind")
+    validate_selection(check)
     codes = check["failure_codes"]
     if (
         not isinstance(codes, list)
@@ -135,6 +133,21 @@ def validate_check(check, tools):
         raise SetupError("Invalid check stage or files flag")
     if not isinstance(check["name"], str) or not check["name"]:
         raise SetupError("Check name is required")
+
+
+def validate_selection(check):
+    if check.get("scope", "files" if check["files"] else "project") not in (
+        "files",
+        "project",
+        "translation-units",
+    ):
+        raise SetupError("Invalid incremental scope")
+    if check.get("scope") in ("files", "translation-units") and not check["files"]:
+        raise SetupError("File scopes require files=true")
+    if "inputs" in check:
+        strings(check["inputs"], "inputs")
+        if any(Path(p).is_absolute() or ".." in Path(p).parts for p in check["inputs"]):
+            raise SetupError("Check inputs must stay within the checkout")
 
 
 def matches(name, patterns):

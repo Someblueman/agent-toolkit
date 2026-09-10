@@ -16,6 +16,7 @@ from quality_lib.config import (
     load,
 )
 from quality_lib.incremental import digest, evaluate, snapshot
+from quality_lib.runner import doctor
 
 
 def reply(event, text, block=False):
@@ -26,6 +27,49 @@ def reply(event, text, block=False):
     if block:
         return {"decision": "block", "reason": text}
     return {"systemMessage": text}
+
+
+def unverified(payload, text):
+    event = payload.get("hook_event_name")
+    block = event == "Stop" and not payload.get("stop_hook_active")
+    if event == "Stop":
+        text += (
+            "\nCompletion is unverified. Retry once when ready; if verification cannot "
+            "finish, report the blocker without claiming successful acceptance."
+        )
+    return reply(event, text, block)
+
+
+def preflight(root, config, current, state, metrics):
+    key = digest(
+        [
+            config,
+            {
+                name: [check["policy"], sorted(check["files"])]
+                for name, check in current.items()
+            },
+        ]
+    )
+    if state.get("preflight") == key:
+        return ""
+    messages = doctor(root, config, automated=True)
+    state["preflight"] = key
+    metrics["preflight"] = True
+    return "Quality preflight (tool availability and declared checks):\n" + "\n".join(
+        messages
+    )
+
+
+def add_preflight(event, result, message):
+    if not message or event == "Stop":
+        return result
+    if not result:
+        return reply(event, message)
+    if event == "PostToolUse":
+        result["hookSpecificOutput"]["additionalContext"] += "\n" + message
+    else:
+        result["systemMessage"] += "\n" + message
+    return result
 
 
 def handle(payload, metrics):
@@ -57,17 +101,19 @@ def handle(payload, metrics):
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             metrics["outcome"] = "busy"
-            return reply(
-                event,
+            return unverified(
+                payload,
                 "Quality check already running in this checkout; retry on the next event (not a pass).",
             )
         # Compute under the lock, since another session may just have finished.
         current = snapshot(root, config)
         state = json.loads(path.read_text()) if path.exists() else {}
-        if state.get("version") != 2:
-            state = {"version": 2}
+        if state.get("version") != 3:
+            state = {"version": 3}
         cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
+        message = preflight(root, config, current, state, metrics)
         result = process(event, payload, root, config, current, state, cache, metrics)
+        result = add_preflight(event, result, message)
         for target, value in ((path, state), (cache_path, cache)):
             with tempfile.NamedTemporaryFile(
                 mode="w", dir=directory, delete=False
@@ -79,10 +125,8 @@ def handle(payload, metrics):
 
 def process(event, payload, root, config, current, state, cache, metrics):
     if event == "UserPromptSubmit":
-        if not state.get("pending"):
-            state.clear()
-            state["version"] = 2
-            state["baseline"] = current
+        # A steering prompt must not erase edits still awaiting completion checks.
+        state.setdefault("baseline", current)
         return {}
     if current == state.get("baseline"):
         return {}
@@ -96,13 +140,11 @@ def process(event, payload, root, config, current, state, cache, metrics):
         return reply(event, output) if output else {}
     code, output = measured_check(root, config, "full", state, current, cache, metrics)
     if not code:
-        state.clear()
-        state["version"] = 2
         state["baseline"] = current
+        state.pop("pending", None)
+        state.pop("fast_checked", None)
         return {}
     if payload.get("stop_hook_active") or state.get("pending"):
-        state["pending"] = False
-        state["baseline"] = current
         return reply(
             event,
             "Quality checks still fail. Report this unresolved result; do not claim a pass.\n"
@@ -165,19 +207,18 @@ def main(stream):
         if not isinstance(payload, dict):
             raise SetupError("Hook input must be an object")
         result = handle(payload, metrics)
-        metrics["blocked"] = result.get("decision") == "block"
-        return result
     except SnapshotChanged as exc:
         metrics["outcome"] = "snapshot_changed"
-        return reply(
-            payload.get("hook_event_name"),
+        result = unverified(
+            payload,
             f"Quality snapshot changed; retry on stable sources (not a pass): {exc}",
         )
     except (SetupError, OSError, ValueError, TypeError, KeyError) as exc:
         metrics["outcome"] = "setup_error"
-        event = payload.get("hook_event_name") if isinstance(payload, dict) else None
-        return reply(
-            event, f"Quality check unavailable; setup required (not a pass): {exc}"
+        result = unverified(
+            payload if isinstance(payload, dict) else {},
+            f"Quality check unavailable; setup required (not a pass): {exc}",
         )
-    finally:
-        log_outcome(payload, metrics, started)
+    metrics["blocked"] = result.get("decision") == "block"
+    log_outcome(payload, metrics, started)
+    return result

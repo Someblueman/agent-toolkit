@@ -4,9 +4,11 @@ from support import Repository
 
 
 class HookTests(Repository):
-    def test_read_only_turn_is_inert(self):
+    def test_read_only_turn_only_runs_preflight(self):
         self.config("raise SystemExit(1)")
-        self.assertEqual(self.hook("UserPromptSubmit"), {})
+        self.assertIn(
+            "Quality preflight", self.hook("UserPromptSubmit")["systemMessage"]
+        )
         self.assertEqual(self.hook("Stop"), {})
 
     def test_failure_continues_once_then_reports(self):
@@ -23,6 +25,8 @@ class HookTests(Repository):
         final = self.hook("Stop", stop_hook_active=True)
         self.assertNotIn("decision", final)
         self.assertIn("still fail", final["systemMessage"])
+        # Unresolved failures must not become an unchanged/passing baseline.
+        self.assertIn("still fail", self.hook("Stop")["systemMessage"])
 
     def test_fixed_continuation_passes(self):
         self.config("raise SystemExit(1)")
@@ -32,14 +36,17 @@ class HookTests(Repository):
         self.config()
         self.assertEqual(self.hook("Stop", stop_hook_active=True), {})
 
-    def test_missing_tool_does_not_trigger_repair_loop(self):
+    def test_missing_tool_retries_once_then_reports_blocker(self):
         config = self.config()
         self.hook("UserPromptSubmit")
         config["tools"]["native"]["command"] = ["/missing"]
         self.write_config(config)
         result = self.hook("Stop")
+        self.assertEqual(result["decision"], "block")
+        self.assertIn("not a pass", result["reason"])
+        result = self.hook("Stop", stop_hook_active=True)
         self.assertNotIn("decision", result)
-        self.assertIn("not a pass", result["systemMessage"])
+        self.assertIn("report the blocker", result["systemMessage"])
 
     def test_no_config_is_inert(self):
         self.assertEqual(self.hook("Stop"), {})
@@ -118,3 +125,17 @@ class HookTests(Repository):
         self.assertIn(
             "PASS", self.hook("PostToolUse")["hookSpecificOutput"]["additionalContext"]
         )
+
+    def test_unstable_completion_requests_retry_then_reports_blocker(self):
+        self.config(
+            "from pathlib import Path; p = Path('src/example.py'); "
+            "p.write_text(p.read_text() + '# changed\\n')"
+        )
+        self.hook("UserPromptSubmit")
+        self.source.write_text("value = 2\n")
+        result = self.hook("Stop")
+        self.assertEqual(result["decision"], "block")
+        self.assertIn("snapshot changed", result["reason"])
+        result = self.hook("Stop", stop_hook_active=True)
+        self.assertNotIn("decision", result)
+        self.assertIn("report the blocker", result["systemMessage"])

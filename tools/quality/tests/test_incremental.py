@@ -71,6 +71,7 @@ class IncrementalTests(Repository):
             .splitlines()
         ]
         self.assertEqual(records[-1]["cached_checks"], 1)
+        self.assertEqual(records[-1]["outcome"], "cached")
         self.hook("UserPromptSubmit")
         other.write_text("other = 2\n")
         self.hook("Stop")
@@ -119,7 +120,7 @@ class IncrementalTests(Repository):
         self.assertEqual(self.hook("Stop"), {})
         self.assertEqual(self.cli("check").returncode, 1)
 
-    def test_unaffected_language_does_not_require_its_tool(self):
+    def test_preflight_requires_all_automated_tools(self):
         config = self.config()
         config["tools"]["unavailable"] = dict(
             config["tools"]["native"], command=["/missing-shellcheck"]
@@ -131,9 +132,11 @@ class IncrementalTests(Repository):
         )
         self.write_config(config)
         (self.root / "src/other.sh").write_text("#!/bin/sh\nexit 0\n")
-        self.hook("UserPromptSubmit")
+        self.assertIn(
+            "missing-shellcheck", self.hook("UserPromptSubmit")["systemMessage"]
+        )
         self.source.write_text("value = 2\n")
-        self.assertEqual(self.hook("Stop"), {})
+        self.assertEqual(self.hook("Stop")["decision"], "block")
 
     def test_explicit_check_detects_native_input_change_outside_roots(self):
         self.config(

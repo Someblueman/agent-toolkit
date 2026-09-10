@@ -11,6 +11,9 @@ Repo-level utility scripts. These operate on the toolkit itself (install, sync, 
 - `install.sh omp` — link shared skills/agents and copy OMP configuration.
 - `install_codex.py` — standard-library implementation of Codex materialization and ownership tracking; invoked by `install.sh`.
 - `test_install.py` — isolated acceptance tests for the real installer CLI: `python3 -m unittest discover -s scripts -p test_install.py -v`.
+- `test_install_packages.py` — install the current canonical packages into a temporary
+  destination, repeat installation and verify parity. Both installer test files run
+  automatically through `quality.json` after relevant source or package changes.
 
 All scripts should:
 

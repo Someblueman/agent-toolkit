@@ -39,8 +39,11 @@ See [docs/contributing.md](docs/contributing.md) for the full rules.
 
 ## Local quality checks
 
-The [quality tool](tools/quality/) provisions pinned native linters and can feed results
-back through Codex lifecycle hooks. Start with `tools/quality/bin/quality setup --dry-run`,
-then `setup`, `doctor`, and `check`. This repository's initial quality configuration covers
-the new tool and adapter. Hook installation is a separate, explicit `install-codex` command;
-no GitHub Actions service is required.
+The [quality tool](tools/quality/) provisions pinned native linters and runs repository
+checks through Codex lifecycle hooks. Once configured, prompts check prerequisites,
+relevant edits run fast checks, and Stop runs the affected acceptance suites. This
+repository includes installer, quality-hook and leader completion tests. Start setup
+with `tools/quality/bin/quality setup --dry-run`; `doctor` and `check` remain available
+for diagnosis and reruns. Hook registration uses `install-codex`; retain an existing
+global registration instead of adding a duplicate project handler. No GitHub Actions
+service is required.
