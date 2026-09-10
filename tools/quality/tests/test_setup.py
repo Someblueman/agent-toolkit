@@ -12,10 +12,11 @@ class SetupTests(Repository):
                 validate(build(self.root, profile))
 
     def test_dry_run_writes_nothing(self):
-        result = self.cli("setup", "--profile", "python", "--dry-run")
+        result = self.cli("setup", "--profile", "python", "--codex", "--dry-run")
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertFalse((self.root / "quality.json").exists())
         self.assertFalse((self.root / ".quality").exists())
+        self.assertFalse((self.root / ".codex").exists())
 
     def test_combined_profiles(self):
         config = build_many(self.root, ["python", "shell"], roots=["src"])
@@ -60,3 +61,16 @@ class SetupTests(Repository):
         self.write_config(config)
         self.assertEqual(self.cli("setup").returncode, 2)
         self.assertEqual(self.cli("doctor").returncode, 2)
+
+    def test_mixed_tools_do_not_confuse_source_coverage_with_availability(self):
+        config = self.config()
+        (self.root / "src/other.sh").write_text("#!/bin/sh\nexit 0\n")
+        config["tools"]["shell"] = dict(config["tools"]["native"])
+        config["checks"].append(
+            dict(config["checks"][0], name="shell", tool="shell", patterns=["*.sh"])
+        )
+        self.write_config(config)
+        for _ in range(2):
+            result = self.cli("setup", "--codex")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertNotIn("Installing:", result.stdout)

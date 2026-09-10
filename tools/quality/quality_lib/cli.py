@@ -4,10 +4,11 @@ import argparse
 import subprocess
 from pathlib import Path
 
+from .codex_hooks import install_codex, plan_codex
 from .config import SetupError, SnapshotChanged, find_root, load
 from .profiles import PINS
 from .runner import check, doctor
-from .setup import install_codex, provision
+from .setup import provision
 
 
 def main():
@@ -23,6 +24,11 @@ def main():
     setup.add_argument("--version")
     setup.add_argument("--source", action="append")
     setup.add_argument("--dry-run", action="store_true")
+    setup.add_argument(
+        "--codex",
+        action="store_true",
+        help="Also register hooks, reusing matching user hooks",
+    )
     sub.add_parser(
         "doctor", help="Check tools, versions and source coverage without installing"
     )
@@ -34,11 +40,27 @@ def main():
         "install-codex", help="Merge project-local Codex hooks; preserve other hooks"
     )
     install.add_argument("--dry-run", action="store_true")
+    install.add_argument(
+        "--global",
+        dest="user",
+        action="store_true",
+        help="Register once in CODEX_HOME for all opted-in repositories",
+    )
     args = parser.parse_args()
     try:
         root = args.root.resolve()
+        toolkit = Path(__file__).resolve().parents[3]
         if args.command == "setup":
+            if args.codex:
+                plan_codex(root, toolkit)  # Detect hook conflicts before provisioning.
             provision(root, args.profile, args.version, args.source, args.dry_run)
+            if args.codex:
+                install_codex(root, toolkit, args.dry_run)
+        elif args.command == "install-codex":
+            if not args.user:
+                root = find_root(root)
+                load(root)
+            install_codex(root, toolkit, args.dry_run, args.user)
         else:
             root = find_root(root)
             config = load(root)
@@ -48,8 +70,6 @@ def main():
                 code, output = check(root, config, "fast" if args.fast else "full")
                 print(output)
                 return code
-            else:
-                install_codex(root, Path(__file__).resolve().parents[3], args.dry_run)
         return 0
     except SnapshotChanged as exc:
         print(f"SNAPSHOT CHANGED: {exc}")

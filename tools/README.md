@@ -18,4 +18,6 @@ Tools are designed to be callable from:
 
 ## Existing tools
 
+- [quality/](quality/) — install reusable lifecycle hooks and run each repository's
+  declared lint, test, type and build checks; supports combined `setup --codex`.
 - [fanout/](fanout/) — run bounded one-shot local workers (Agy / OpenCode) and collect structured results.

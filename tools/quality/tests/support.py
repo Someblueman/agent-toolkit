@@ -30,6 +30,7 @@ class Repository(unittest.TestCase):
             capture_output=True,
             timeout=660,
             check=False,
+            env=dict(os.environ, CODEX_HOME=str(self.root / "codex-home")),
         )
 
     def config(self, body="raise SystemExit(0)"):

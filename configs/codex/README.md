@@ -37,3 +37,16 @@ Inspect a conflict before using `--force`, which replaces conflicting selected i
 The selected list includes the user-requested `code-simplification`, `hardware-aware-optimization`, and `profiling-software-performance` drafts. Installation does not establish their behavioral correctness or install optional profiling/compiler dependencies. `fanout` remains excluded because its standalone tool is not installed by this adapter.
 
 The anti-bloat script lives at `skills/pragmatic-engineering/scripts/check_anti_bloat.py` and is installed at `~/.codex/scripts/check_anti_bloat.py` for convenience.
+
+## Repository quality hooks
+
+Quality hooks use the shared [quality installer](../../tools/quality/README.md), separately
+from skill materialization. Run `tools/quality/bin/quality --root /path/to/repo setup --codex`
+for a repository with its own `quality.json`. This provisions its selected tools and
+registers hooks, reusing matching user-level JSON handlers. For first-time setup, select
+the repository's language profiles and source roots as described in the quality guide.
+
+`tools/quality/bin/quality install-codex --global` registers once in `CODEX_HOME` for all
+opted-in repositories. Review/trust the definitions in Codex `/hooks`; installation
+preserves trust and enablement settings. The shared checker remains inert without a
+repository-owned `quality.json`.

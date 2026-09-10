@@ -45,5 +45,8 @@ relevant edits run fast checks, and Stop runs the affected acceptance suites. Th
 repository includes installer, quality-hook and leader completion tests. Start setup
 with `tools/quality/bin/quality setup --dry-run`; `doctor` and `check` remain available
 for diagnosis and reruns. Hook registration uses `install-codex`; retain an existing
-global registration instead of adding a duplicate project handler. No GitHub Actions
-service is required.
+global registration instead of adding a duplicate project handler. For any repository
+with its own `quality.json`, run `tools/quality/bin/quality --root /path/to/repo setup --codex`
+from this checkout to provision tools and register hooks together. Matching user-level
+JSON hooks are reused. See the quality guide for first-time profiles and the optional
+`install-codex --global` registration. No GitHub Actions service is required.

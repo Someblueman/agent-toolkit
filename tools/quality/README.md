@@ -19,7 +19,7 @@ tools/quality/bin/quality check
 The checked-in `quality.json` covers this tool, its Codex adapter, the installer and
 leader completion behavior. Historical examples and other skill helpers are not all
 covered. Ruff is installed under the ignored `.quality/` directory; Python 3.13.2 is
-externally managed for tests. Setup does not install Codex hooks.
+externally managed for tests. `setup --codex` also registers the shared Codex hooks.
 
 With the hooks active, the first prompt checks tool availability and reports the
 declared verification coverage. Relevant edits run Ruff and the installer tests,
@@ -31,7 +31,7 @@ For another repository, select its existing language tools explicitly:
 
 ```sh
 /path/to/agent-toolkit/tools/quality/bin/quality --root /path/to/project setup \
-  --profile python --profile shell --source src --source scripts --dry-run
+  --profile python --profile shell --source src --source scripts --codex --dry-run
 # Review the proposal, then repeat without --dry-run.
 ```
 
@@ -39,6 +39,23 @@ Use one JS profile: `biome` or `eslint`, matching the project's existing toolcha
 Multiple profiles share one source inventory. `--version X.Y.Z` overrides the pin
 when selecting a single profile. Once `quality.json` exists, edit its commands and
 pins directly; `setup` will not replace it with a newly selected profile.
+
+For a repository that already contains its own `quality.json`, installation on another
+machine or repeat installation is one command:
+
+```sh
+/path/to/agent-toolkit/tools/quality/bin/quality --root /path/to/project setup --codex
+```
+
+This preserves the repository's configuration, provisions its declared tools and
+registers hooks only after setup succeeds. Hook conflicts are detected before
+provisioning. Select profiles/source roots only for initial configuration; omit them
+on subsequent runs. Add `.quality/` to the target repository's ignore rules.
+
+Keep each repository's native test/build commands and dependency inputs in its own
+`quality.json`. Do not copy the toolkit's configuration, which tests the toolkit itself.
+The shared runner has no dependency on the target repository's language or layout;
+the current lifecycle adapter targets Codex on macOS/Linux.
 
 ## What setup provisions
 
@@ -152,14 +169,25 @@ test. The real-tool boundary tests below provide that additional evidence.
 ```sh
 quality --root /path/to/project install-codex --dry-run
 quality --root /path/to/project install-codex
+# Optional: register once for every repository that opts in with quality.json.
+quality install-codex --global --dry-run
+quality install-codex --global
 ```
 
 Use the full executable path above if `quality` is not on PATH. This merges a command
 adapter into the project's `.codex/hooks.json`, preserving other events and handlers.
+`--global` targets `$CODEX_HOME/hooks.json` (default `~/.codex/hooks.json`) and needs
+no project configuration. Project installation reuses matching user-level JSON
+registrations and adds only missing events. Existing project handlers are preserved;
+pre-existing duplicates are not removed. Duplicate detection covers these two JSON
+files; inline TOML, plugins and managed sources remain visible through Codex `/hooks`.
 Reinstallation is idempotent; a different existing quality adapter causes a conflict
 instead of being overwritten. The command references this checkout with an absolute
 path. Keep the checkout at that location or review/update the hook command after moving it.
-It does not change the global Codex installer, feature flags, permissions or hook trust.
+It does not change feature flags, permissions, hook trust or enablement. Registration
+does not establish runtime activation: review the configured sources in Codex `/hooks`.
+Keep one enabled registration for each event. This follows the
+[Codex registration and trust contract](https://learn.chatgpt.com/docs/hooks).
 
 - `UserPromptSubmit` performs preflight on the first prompt in a session and after
   quality configuration, source inventory, checker or tool changes. All tools required by automated

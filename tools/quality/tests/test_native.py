@@ -15,7 +15,7 @@ class NativeTests(Repository):
         self.source.unlink()
         self.source = self.root / "src" / source
         self.source.write_text(text)
-        result = self.cli("setup", "--profile", profile, "--source", "src")
+        result = self.cli("setup", "--profile", profile, "--source", "src", "--codex")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.cli("doctor").returncode, 0)
 

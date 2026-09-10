@@ -3,12 +3,11 @@
 import json
 import shlex
 import subprocess
-import sys
 from pathlib import Path
 
 from .config import SetupError, inside, inventory, load
 from .profiles import build_many
-from .runner import doctor
+from .runner import doctor, verify_tool
 
 
 def configure_native(root, config):
@@ -84,18 +83,13 @@ def provision(root, profile=None, version=None, roots=None, dry_run=False):
     inside(root, ".quality").mkdir(exist_ok=True)
     inside(root, ".quality/bin").mkdir(exist_ok=True)
     for name, tool in config["tools"].items():
-        install_tool(root, config, name, tool)
+        install_tool(root, name, tool)
     print("\n".join(doctor(root, config)))
 
 
-def install_tool(root, config, name, tool):
-    single = dict(
-        config,
-        tools={name: tool},
-        checks=[c for c in config["checks"] if c["tool"] == name],
-    )
+def install_tool(root, name, tool):
     try:
-        doctor(root, single)
+        verify_tool(root, name, tool)
         print(f"Already provisioned: {name}")
         return
     except SetupError:
@@ -110,51 +104,3 @@ def install_tool(root, config, name, tool):
             subprocess.run(command, cwd=root, check=True, timeout=600)
         except (OSError, subprocess.SubprocessError) as exc:
             raise SetupError(f"Install failed for {name}: {exc}") from exc
-
-
-def install_codex(root, toolkit, dry_run=False):
-    destination = inside(root, ".codex")
-    path = inside(root, ".codex/hooks.json")
-    if path.exists():
-        try:
-            data = json.loads(path.read_text())
-        except ValueError as exc:
-            raise SetupError(
-                "Existing hooks.json is invalid; leaving it untouched"
-            ) from exc
-    else:
-        data = {"hooks": {}}
-    if not isinstance(data, dict) or not isinstance(data.get("hooks"), dict):
-        raise SetupError("Existing hooks.json has an unsupported shape")
-    command = shlex.join([sys.executable, str(toolkit / "hooks/session/quality.py")])
-    for event in ("UserPromptSubmit", "PostToolUse", "Stop"):
-        groups = data["hooks"].setdefault(event, [])
-        if not isinstance(groups, list):
-            raise SetupError(f"Invalid {event} hook list")
-        entry = {
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": command,
-                    "timeout": 300,
-                    "statusMessage": "Checking repository quality",
-                }
-            ]
-        }
-        if event == "PostToolUse":
-            entry["matcher"] = "Bash|apply_patch|Edit|Write"
-        if entry not in groups:
-            if any("quality.py" in str(g) for g in groups):
-                raise SetupError(
-                    f"Existing quality adapter differs for {event}; review before replacing"
-                )
-            groups.append(entry)
-    rendered = json.dumps(data, indent=2) + "\n"
-    if dry_run:
-        print(rendered)
-        return
-    destination.mkdir(exist_ok=True)
-    path.write_text(rendered)
-    print(
-        f"Installed {path}. Review/trust the hook in Codex; installation does not grant trust."
-    )
