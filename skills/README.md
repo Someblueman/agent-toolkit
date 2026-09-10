@@ -1,6 +1,7 @@
 # skills/
 
-Agent-agnostic skill definitions. Each subdirectory is one skill.
+The canonical home for every toolkit skill. Each subdirectory is one complete package,
+including skills that require a particular agent or external tool.
 
 ## Convention
 
@@ -8,6 +9,7 @@ Every skill is a directory of the form `skills/<skill-name>/` containing:
 
 - `SKILL.md` — the primary instruction file. YAML frontmatter (name, description, when-to-use) followed by markdown instructions the agent will read.
 - Optional `scripts/`, `references/`, `assets/` subdirectories.
+- Optional agent metadata, such as `agents/openai.yaml` for the Codex skill picker.
 
 A minimal `SKILL.md`:
 
@@ -33,4 +35,14 @@ description: One-line summary of what this skill does and when to load it.
 1. `mkdir skills/<name>`
 2. Add a `SKILL.md` with frontmatter.
 3. Update [docs/catalog.md](../docs/catalog.md).
-4. If any agent needs agent-specific wiring, add it under `configs/<agent>/`.
+4. Keep skill metadata inside the package; put installer selection and runtime wiring under `configs/<agent>/`.
+
+## Installation and compatibility
+
+Codex copies packages selected by `configs/codex/skills.txt`. OMP links this entire directory,
+so all packages are visible there. Other adapters should consume these same packages.
+
+Visibility does not establish runtime support: `team-leader` requires Codex goal and
+heartbeat tools, `teamwork-preview` requires the Codex collaboration capabilities described
+in its instructions, and `workflow` requires the external `afk` CLI. Their instructions and
+requirements remain part of the central package; relocation does not port those workflows.

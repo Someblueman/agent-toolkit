@@ -75,19 +75,11 @@ def stage_content(stage: Path) -> dict[str, Path]:
         REPO / "skills/pragmatic-engineering/scripts/test_check_anti_bloat.py"
     )
     for name in names:
-        shared = REPO / "skills" / name
-        native = adapter / "native-skills" / name
-        if shared.exists() and native.exists():
-            raise ValueError(f"Ambiguous shared/native source for {name}")
-        source = native if native.exists() else shared
+        source = REPO / "skills" / name
         if not (source / "SKILL.md").is_file():
             raise ValueError(f"Missing skill source: {source}")
         target = stage / "skills" / name
         shutil.copytree(source, target, symlinks=True, ignore=IGNORE)
-        metadata = adapter / "skills" / name / "openai.yaml"
-        if metadata.is_file():
-            (target / "agents").mkdir(exist_ok=True)
-            shutil.copy2(metadata, target / "agents/openai.yaml")
         sources[f"skills/{name}"] = target
     # Validate every source before changing any installed files.
     for name, source in sources.items():

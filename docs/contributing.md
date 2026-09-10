@@ -5,7 +5,7 @@ Thanks for helping grow the toolkit. This document covers the rules that keep th
 ## Core rules
 
 1. **The top-level dirs hold the source of truth.** `configs/` only contains glue.
-2. **No vendor-specific files in shared dirs.** If a piece of behavior is agent-specific, it lives in `configs/<agent>/`.
+2. **Keep complete skills together.** Agent-specific skill metadata belongs inside `skills/<name>/` (for example `agents/openai.yaml`). Keep installation selection and runtime wiring in `configs/<agent>/`.
 3. **Skills are `SKILL.md` files with YAML frontmatter.** Keep them short and focused.
 4. **Hooks are executable shell scripts.** Python with a shebang is acceptable when shell isn't enough.
 5. **Tools are standalone CLIs.** Anything stateful belongs in `tools/`, not in hooks.
@@ -21,7 +21,9 @@ Frontmatter keys:
 - `name` — kebab-case, matches the directory.
 - `description` — one line. State **what** the skill does and **when** to load it.
 
-Then update [catalog.md](catalog.md).
+Keep helpers and references in the same package. Document agent/tool requirements in its
+instructions. Add optional Codex picker metadata at `agents/openai.yaml`, and select the
+package in `configs/codex/skills.txt` when appropriate. Then update [catalog.md](catalog.md).
 
 ## Adding a new hook
 

@@ -18,8 +18,12 @@ Oh My Pi adapter. Installation is **hybrid**:
 | At `~/.omp/agent/` | Source in this repo | Install | Purpose |
 |---|---|---|---|
 | `config.yml` | `configs/omp/config.yml` | copy | Settings: model roles, fallback chains, compaction, memory |
-| `skills/` | `skills/` | symlink | Shared SKILL.md instructions (OMP-native format already) |
+| `skills/` | `skills/` | symlink | Complete central skill packages |
 | `agents/` | `agents/` | symlink | Task-agent definitions (`explorer.md` etc.) |
+
+All central packages are visible through the link, including skills requiring Codex tools
+or an external CLI. See [skill compatibility](../../skills/README.md); installation alone
+does not qualify those workflows for OMP.
 
 ## Notes
 

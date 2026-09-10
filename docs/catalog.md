@@ -26,7 +26,7 @@ The index of everything shippable in this toolkit. Updated when skills, hooks, a
 
 Status values: `scaffold` (placeholder exists), `draft` (real content, not validated), `stable` (validated + used in the wild).
 
-## Codex-specific skills
+## Skills with runtime requirements
 
 The shared `investigate`, `prototype`, `plan`, and `reflect` skills are selected for Codex with
 explicit-only invocation (`$investigate`, `$prototype`, `$plan`, and `$reflect`). They are drafts
@@ -34,9 +34,11 @@ pending real-work pilots.
 
 | Name | Source | Installation |
 |---|---|---|
-| teamwork-preview | `configs/codex/native-skills/teamwork-preview/` | Selected for Codex; imported from the existing personal installation on 2026-09-04 without changing behavior. |
-| workflow | `configs/codex/native-skills/workflow/` | Selected for Codex; imported from the existing personal installation on 2026-09-04 without changing behavior. Requires the external `afk` CLI. |
+| team-leader | `skills/team-leader/` | Selected for Codex; requires Codex goal and heartbeat tools. |
+| teamwork-preview | `skills/teamwork-preview/` | Selected for Codex; imported from the existing personal installation on 2026-09-04 without changing behavior. |
+| workflow | `skills/workflow/` | Selected for Codex; imported from the existing personal installation on 2026-09-04 without changing behavior. Requires the external `afk` CLI. |
 
+All packages, including their optional agent metadata, live under `skills/`.
 `configs/codex/skills.txt` is the explicit Codex selection. The user requested installation of the three draft skills (`code-simplification`, `hardware-aware-optimization`, and `profiling-software-performance`); their draft status remains unchanged. `fanout` is available in the repository but is not installed into Codex by default.
 
 ## External skill ownership

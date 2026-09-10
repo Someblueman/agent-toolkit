@@ -10,8 +10,7 @@ import unittest
 from pathlib import Path
 
 SCRIPT = (
-    Path(__file__).resolve().parents[1]
-    / "configs/codex/native-skills/team-leader/scripts/completion.py"
+    Path(__file__).resolve().parents[1] / "skills/team-leader/scripts/completion.py"
 )
 
 

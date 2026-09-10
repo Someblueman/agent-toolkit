@@ -25,8 +25,11 @@ class InstallTest(unittest.TestCase):
         )
         self.write("configs/codex/AGENTS.md", "policy\n")
         self.write("configs/codex/skills.txt", "example\n")
-        self.write("configs/codex/skills/example/openai.yaml", "interface: {}\n")
+        self.write("skills/example/agents/openai.yaml", "interface: {}\n")
         self.write("skills/example/SKILL.md", "example\n")
+        self.write("skills/example/references/guide.md", "reference\n")
+        self.write("skills/example/scripts/helper", "#!/bin/sh\nexit 0\n")
+        (self.repo / "skills/example/scripts/helper").chmod(0o755)
         self.write("skills/pragmatic-engineering/scripts/check_anti_bloat.py", "pass\n")
         self.write(
             "skills/pragmatic-engineering/scripts/test_check_anti_bloat.py", "pass\n"
@@ -48,16 +51,18 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(result.returncode, code, result.stdout + result.stderr)
         return result
 
-    def test_install_repeat_and_source_refresh_include_adapter(self):
+    def test_install_repeat_and_source_refresh_include_metadata(self):
         self.run_cli()
         metadata = self.home / "skills/example/agents/openai.yaml"
+        self.assertEqual(metadata.read_text(), "interface: {}\n")
+        package = self.home / "skills/example"
+        self.assertEqual((package / "references/guide.md").read_text(), "reference\n")
+        self.assertTrue(os.access(package / "scripts/helper", os.X_OK))
         before = metadata.stat().st_mtime_ns
         self.run_cli()
         self.run_cli("--check")
         self.assertEqual(metadata.stat().st_mtime_ns, before)
-        self.write(
-            "configs/codex/skills/example/openai.yaml", "interface: {name: changed}\n"
-        )
+        self.write("skills/example/agents/openai.yaml", "interface: {name: changed}\n")
         self.run_cli("--check", code=1)
         self.run_cli()
         self.assertIn("changed", metadata.read_text())
@@ -119,6 +124,10 @@ class InstallTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(
             (destination / "skills").resolve(), (self.repo / "skills").resolve()
+        )
+        self.assertEqual(
+            (destination / "skills/example/agents/openai.yaml").read_text(),
+            "interface: {}\n",
         )
         self.assertFalse((destination / "config.yml").is_symlink())
         self.assertEqual((destination / "config.yml").read_text(), "example: true\n")

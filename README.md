@@ -2,7 +2,7 @@
 
 A vendor-neutral home for skills, hooks, agents, and tools that improve AI coding assistants (Codex, Claude Code, OpenCode, Antigravity, Pi, and friends).
 
-The toolkit is organized around **agent-agnostic primitives** in the top-level directories and **per-agent adapter layers** in `configs/`. This lets one well-written `SKILL.md` be reused across multiple agents without forking the content.
+The toolkit is organized around **canonical packages** in the top-level directories and **per-agent adapter layers** in `configs/`. This lets one well-written `SKILL.md` be reused across multiple agents without forking the content.
 
 ## Layout
 
@@ -30,10 +30,10 @@ Codex refreshes unmodified managed content and reports local conflicts with exit
 
 ## Principles
 
-- **Portable content lives in the top-level dirs.** Agent-specific policy, metadata, selection, and native skills live in `configs/<agent>/`.
-- **Skills are agent-agnostic.** Use `SKILL.md` with YAML frontmatter so any agent can render them.
+- **All skill packages live in `skills/<name>/`.** Instructions, scripts, references, and optional agent metadata stay together.
+- **Skills use a common format.** Use `SKILL.md` with YAML frontmatter and document any agent or tool requirements.
 - **Hooks are shell scripts.** Anything executable counts; agents can wrap them however they need.
-- **No agent-specific files in shared dirs.** If a skill needs agent-specific behavior, put it in `configs/<agent>/`.
+- **Configs contain installation wiring.** Keep agent policy, package selection, and runtime configuration in `configs/<agent>/`.
 
 See [docs/contributing.md](docs/contributing.md) for the full rules.
 
