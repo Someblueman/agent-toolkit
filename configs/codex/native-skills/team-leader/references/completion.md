@@ -71,8 +71,14 @@ coordinator. Use a clear prompt equivalent to:
 
 > Resume only the selected assignment recorded in [absolute roster path], using
 > the team-leader skill. First honor newer user cancellation or scope changes.
-> Inspect the preceding turn: if it was interrupted/cancelled, pause recovery unless
-> the user explicitly resumed afterward. A scheduled prompt is not user resume.
+> Reconcile the latest user requests, review findings and actual Git/evidence before
+> trusting a complete roster or running the check. Reopen authorized unfinished
+> work and invalidate stale acceptance; a status query alone is not a resume.
+> Explicit user cancellation or an Interrupt-hook suspension requires user resume.
+> A turn merely labelled interrupted after a crash/restart is not proof of user
+> cancellation. With confirmed runtime interruption and no explicit suspension,
+> continue the existing active assignment within its original recovery window.
+> If the cause is unknown, report that uncertainty and pause; do not invent consent.
 > Reconcile live worker states and refresh `waiting_on` without resetting counters.
 > Run `python3 [installed completion.py] check [leader-thread-id]`. If the check
 > exits nonzero or does not return `decision: block`, pause this heartbeat and
@@ -88,6 +94,11 @@ unchanged recovery checks with no observed running workers, or the deadline.
 Its private counter/event files are execution
 bookkeeping, not another work roster. The hook cannot judge semantic completion:
 the leader and focused reviewer must inspect actual implementation and evidence.
+The CLI checks only the supplied roster; it cannot detect newer user messages or
+prove that an evidence string represents independent review. Reconciliation must
+precede it. A paused heartbeat cannot perform that reconciliation: the leader must
+update the roster and reactivate the existing heartbeat when a user follow-up
+authorizes resumed work, subject to the existing window or an agreed renewal.
 
 On explicit user interruption the Interrupt hook suspends recovery. A later explicit
 resume authorizes `completion.py resume <thread-id>` and reactivating the existing

@@ -59,6 +59,18 @@ ready for review, verified, and integrated; a finished turn is not acceptance.
 Keep a short section for decisions and the next actions, not a second transcript.
 After interruption, reconcile the roster with live threads and Git before acting.
 
+At each user follow-up, reconcile its requested outcome before trusting a terminal
+roster status. A request to extend or repair the selected work reopens the assignment:
+set it active, update requirements and next action, and invalidate completion/review
+evidence that no longer covers the result. A status question alone does not reopen
+work. Preserve the recovery deadline; reactivate recovery only within an authorized
+window as described below. Do not leave a complete roster while doing new work.
+
+If task history conflicts with the user's account or current Git/evidence, treat
+the history view as potentially stale. Compare available saved public messages and
+command results before declaring completion or missing messages. Report unresolved
+disagreement; do not repair app storage as part of project coordination.
+
 For hands-off execution, use [completion and recovery](references/completion.md).
 Its JSON header belongs in this same roster, not a second task ledger. Update the
 roster whenever a worker hands back, review finds a defect, or integration changes.
@@ -105,6 +117,10 @@ time and cost bounds; do not manufacture additional work to keep workers busy.
 Continue waiting after a repair request, consume the repaired result, and recheck
 the affected acceptance criteria. Before closing the selected item, obtain one
 focused independent review against its original requirements and actual evidence.
+Record the reviewer task ID, reviewed revision or artifact, findings and their
+resolution in the roster. Review must cover the latest authorized scope and final
+changes; an earlier review does not cover later implementation automatically.
+An unmet review requirement keeps the assignment active, even if tests pass.
 The reviewer identifies unmet requirements with evidence; it does not open a general
 cleanup campaign. The leader personally checks the integrated result. A worker
 handoff, review report, repair dispatch, or status answer is not the task endpoint.
