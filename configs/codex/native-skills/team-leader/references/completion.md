@@ -25,9 +25,16 @@ roster. Upgrade an existing roster in place; retain its decisions and task ident
 }
 ```
 
-Set `deadline` to Unix seconds: use the user's bound, otherwise four hours from
-activation. State the chosen bound without asking a routine setup question. Do not
-silently extend it. `progress` changes only for new observable evidence, not another
+Before activating recovery, ask for a duration or stop time unless the user already
+provided one for this assignment. Explain that this is the recovery window, separate
+from the heartbeat cadence, and wait for their answer. There is no default window;
+do not silently choose four hours or any other duration. Independent authorized work
+can continue while the question is pending, but leave recovery inactive.
+
+Set `deadline` to Unix seconds using the agreed duration from activation or the
+agreed stop time. The example timestamp above is illustrative, not a default.
+Record the user's choice and resolved deadline in the roster. Do not silently
+extend it. `progress` changes only for new observable evidence, not another
 poll, rewritten summary, or renewed intention. Keep detailed acceptance criteria,
 worker IDs/checkouts, review findings, and evidence in the Markdown body.
 `waiting_on` lists only worker/task IDs currently observed running. Refresh it from
@@ -84,7 +91,9 @@ the leader and focused reviewer must inspect actual implementation and evidence.
 
 On explicit user interruption the Interrupt hook suspends recovery. A later explicit
 resume authorizes `completion.py resume <thread-id>` and reactivating the existing
-heartbeat, with a newly stated bound if necessary. A status query does not resume a
+heartbeat within its existing agreed window. If that window has expired, ask for
+a new duration or stop time unless the user supplied one with the resume request.
+Do not reactivate recovery until the new window is agreed. A status query does not resume a
 paused assignment. A newly user-selected assignment on the same leader also permits
 resetting counters once, after updating the roster with that assignment and bound.
 Never do this automatically in a recovery continuation. Usage limits, an offline

@@ -11,7 +11,7 @@ for following up until the agreed work is verified or concretely blocked.
 This skill works across projects; discover each repository's instructions,
 toolchain, and acceptance checks instead of assuming project-specific commands.
 
-Selecting a roadmap item is enough input: derive its requirements, dependencies,
+Selecting a roadmap item defines the work: derive its requirements, dependencies,
 checks, and endpoint from the roadmap, repository, and existing authorization.
 Own implementation, review, repair, verification, commit, and authorized integration.
 Do not ask the user to redispatch completed workers or repeat settled integration
@@ -35,6 +35,14 @@ across worktrees authorizes those tasks and worktrees within that scope. Merely
 loading this skill or asking for status does not. Do not repeat settled questions.
 Default to at most three active worker tasks if no limit is specified; keep
 dependent or overlapping changes sequential.
+
+Before activating recovery, ask what recovery window the user wants unless they
+already supplied one for this assignment. Ask for a duration or stop time, explain
+that it limits how long automatic recovery can continue, and wait for the answer;
+there is no default recovery window. Continue independent planning or implementation
+while waiting, but do not activate the heartbeat or choose a deadline yourself.
+Record the agreed window and its resolved deadline in the roster. If an expired
+window needs renewal, ask again unless the user already specified the new window.
 
 ## Keep one roster
 
