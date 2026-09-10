@@ -19,10 +19,15 @@ The index of everything shippable in this toolkit. Updated when skills, hooks, a
 | [rust-engineering](../skills/rust-engineering/) | Idiomatic Rust implementation, review, and tooling. | stable |
 | [shell-engineering](../skills/shell-engineering/) | Shell scripting best practices, safety, and portability. | stable |
 | [typescript-engineering](../skills/typescript-engineering/) | Idiomatic TypeScript implementation, review, and tooling. | stable |
+| [investigate](../skills/investigate/) | Investigate questions using code, runtime evidence, and history; read-only by default. | draft |
+| [prototype](../skills/prototype/) | Resolve design uncertainty with a small runnable experiment. | draft |
 
 Status values: `scaffold` (placeholder exists), `draft` (real content, not validated), `stable` (validated + used in the wild).
 
 ## Codex-specific skills
+
+The shared `investigate` and `prototype` skills are selected for Codex with explicit-only
+invocation (`$investigate` and `$prototype`). Both are drafts pending real-work pilots.
 
 | Name | Source | Installation |
 |---|---|---|

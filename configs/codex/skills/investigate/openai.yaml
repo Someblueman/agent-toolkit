@@ -1,0 +1,5 @@
+interface:
+  display_name: "Investigate"
+  short_description: "Explain questions and bugs with evidence"
+policy:
+  allow_implicit_invocation: false

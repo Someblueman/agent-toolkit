@@ -4,8 +4,10 @@ define-goal
 go-engineering
 hardware-aware-optimization
 haskell
+investigate
 pragmatic-engineering
 profiling-software-performance
+prototype
 python-engineering
 rust-engineering
 shell-engineering
