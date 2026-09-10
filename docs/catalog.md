@@ -21,13 +21,16 @@ The index of everything shippable in this toolkit. Updated when skills, hooks, a
 | [typescript-engineering](../skills/typescript-engineering/) | Idiomatic TypeScript implementation, review, and tooling. | stable |
 | [investigate](../skills/investigate/) | Investigate questions using code, runtime evidence, and history; read-only by default. | draft |
 | [prototype](../skills/prototype/) | Resolve design uncertainty with a small runnable experiment. | draft |
+| [plan](../skills/plan/) | Collaboratively maintain one agent-readable plan without automatically launching execution. | draft |
+| [reflect](../skills/reflect/) | Extract supported lessons and update the appropriate guidance within authorized scope. | draft |
 
 Status values: `scaffold` (placeholder exists), `draft` (real content, not validated), `stable` (validated + used in the wild).
 
 ## Codex-specific skills
 
-The shared `investigate` and `prototype` skills are selected for Codex with explicit-only
-invocation (`$investigate` and `$prototype`). Both are drafts pending real-work pilots.
+The shared `investigate`, `prototype`, `plan`, and `reflect` skills are selected for Codex with
+explicit-only invocation (`$investigate`, `$prototype`, `$plan`, and `$reflect`). They are drafts
+pending real-work pilots.
 
 | Name | Source | Installation |
 |---|---|---|

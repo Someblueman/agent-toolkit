@@ -5,10 +5,12 @@ go-engineering
 hardware-aware-optimization
 haskell
 investigate
+plan
 pragmatic-engineering
 profiling-software-performance
 prototype
 python-engineering
+reflect
 rust-engineering
 shell-engineering
 team-leader

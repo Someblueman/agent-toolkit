@@ -1,0 +1,5 @@
+interface:
+  display_name: "Plan"
+  short_description: "Iterate together on one actionable plan"
+policy:
+  allow_implicit_invocation: false
