@@ -25,11 +25,13 @@ roster. Upgrade an existing roster in place; retain its decisions and task ident
 }
 ```
 
-Before activating recovery, ask for a duration or stop time unless the user already
-provided one for this assignment. Explain that this is the recovery window, separate
+Ask for a duration or stop time in the first response to an implementation assignment,
+before dispatching or redirecting workers, unless an authorized window already applies.
+Do not wait until heartbeat setup to ask. Explain that this is the recovery window, separate
 from the heartbeat cadence, and wait for their answer. There is no default window;
 do not silently choose four hours or any other duration. Independent authorized work
-can continue while the question is pending, but leave recovery inactive.
+can continue while the question is pending, but leave recovery inactive. Once the
+user answers, activate recovery promptly before waiting on workers.
 
 Set `deadline` to Unix seconds using the agreed duration from activation or the
 agreed stop time. The example timestamp above is illustrative, not a default.

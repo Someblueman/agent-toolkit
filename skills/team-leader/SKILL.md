@@ -36,11 +36,15 @@ loading this skill or asking for status does not. Do not repeat settled question
 Default to at most three active worker tasks if no limit is specified; keep
 dependent or overlapping changes sequential.
 
-Before activating recovery, ask what recovery window the user wants unless they
-already supplied one for this assignment. Ask for a duration or stop time, explain
-that it limits how long automatic recovery can continue, and wait for the answer;
-there is no default recovery window. Continue independent planning or implementation
-while waiting, but do not activate the heartbeat or choose a deadline yourself.
+At the start of an implementation assignment, ask for the missing recovery window
+in the first response, before dispatching or redirecting workers. Do not defer the
+question until heartbeat setup or until the user asks why recovery is inactive.
+If a window already applies to this assignment, reuse it without asking again.
+Ask for a duration or stop time, explaining that it bounds automatic recovery,
+separately from heartbeat cadence. There is no default window. Use an available
+asynchronous input tool and continue independent authorized work while waiting;
+otherwise ask directly. Do not activate the heartbeat or choose a deadline before
+the user answers. Once answered, activate recovery promptly before waiting on workers.
 Record the agreed window and its resolved deadline in the roster. If an expired
 window needs renewal, ask again unless the user already specified the new window.
 
@@ -84,6 +88,18 @@ authorized isolated Git work. Follow the tool's starting-state rules; do not
 invent branches or silently omit dirty changes the task depends on. For an
 existing task, use `send_message_to_thread` instead of creating a duplicate.
 Preserve requested models and effort; otherwise retain the app/task defaults.
+
+Do not assume a new app task inherits the leader's permissions. Check the available
+tool schema before dispatch: if it supports permission selection, preserve the
+user-authorized settings; never invent unsupported arguments. The current
+`create_thread` interface exposes no approval or sandbox override. Have workers
+report their effective approval policy and sandbox restrictions with their first
+status, and record any mismatch in the roster. Do not promise approval-free
+execution when inheritance is unknown or the worker requires approval. Surface an
+actual permission blocker in the leader thread with the affected task and operation;
+do not leave the user to discover it in the worker. Continue independent permitted
+work, but do not change global permissions, approve on the user's behalf, or route
+a blocked operation through another agent or tool to evade the restriction.
 
 Every assignment should specify:
 
