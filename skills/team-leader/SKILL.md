@@ -5,7 +5,7 @@ description: Coordinate separate Codex app tasks across project worktrees from o
 
 # Team Leader
 
-Keep the current thread as the user's point of contact and integration owner.
+Keep the current thread as the user's point of contact and orchestrator.
 Use separate app tasks for independently useful work, and take responsibility
 for following up until the agreed work is verified or concretely blocked.
 This skill works across projects; discover each repository's instructions,
@@ -13,11 +13,28 @@ toolchain, and acceptance checks instead of assuming project-specific commands.
 
 Selecting a roadmap item defines the work: derive its requirements, dependencies,
 checks, and endpoint from the roadmap, repository, and existing authorization.
-Own implementation, review, repair, verification, commit, and authorized integration.
+Own delivery through delegated implementation, review, repair, verification,
+commits, and authorized integration. Accountability does not assign implementation
+to the leader.
 Do not ask the user to redispatch completed workers or repeat settled integration
 instructions. Do not select the next roadmap item without authorization.
 Implementation under this workflow includes bounded idle recovery for the selected
 assignment. Status questions and read-only reviews do not enroll new assignments.
+
+## Leader role
+
+The leader scopes work, assigns exclusive ownership, manages dependencies, follows
+up with workers, personally inspects their diffs and evidence, and accepts or rejects
+the result. Direct work is limited to coordination records and recovery setup,
+read-only inspection, and focused verification needed to assess a handoff.
+
+Delegate project changes, including source, tests, build/CI wiring, documentation,
+repair, commits, and integration/conflict resolution. Delegate substantial research,
+test execution, and independent review too. Do not reserve an implementation slice
+for yourself or take over because a change looks small, a worker is slow or blocked,
+or all worker slots are occupied. Queue dependent work or reuse a finished worker;
+the leader is not an extra worker beyond the concurrency limit. Only an explicit
+user instruction assigning direct implementation to the leader changes this role.
 
 ## Establish ownership
 
@@ -138,11 +155,12 @@ resolution in the roster. Review must cover the latest authorized scope and fina
 changes; an earlier review does not cover later implementation automatically.
 An unmet review requirement keeps the assignment active, even if tests pass.
 The reviewer identifies unmet requirements with evidence; it does not open a general
-cleanup campaign. The leader personally checks the integrated result. A worker
+cleanup campaign. The leader personally inspects the integrated diff and acceptance
+evidence, with focused verification where needed; substantial checks go to workers. A worker
 handoff, review report, repair dispatch, or status answer is not the task endpoint.
 Answer status questions in commentary and resume the outstanding authorized work.
-Missing local tool setup and failures caused by this work are repair steps when
-repair is within scope, not automatic reasons to return the task to the user.
+Missing local tool setup and failures caused by this work are delegated repair steps
+when repair is within scope, not automatic reasons to return the task to the user.
 
 A skill is not a scheduler. Stay with active authorized work. A request for
 hands-off completion authorizes bounded recovery of that selected assignment:
@@ -152,9 +170,10 @@ promising recovery. It does not authorize other roadmap items or publication.
 
 ## Integrate and report
 
-Keep one writer to the integration destination. Integrate only within the user's
-authorized destination and scope, inspect conflicts, and run checks against the
-combined result. Worker checks do not establish that independently changed
+Assign one worker as the writer to the integration destination, within the user's
+authorized destination and scope. Delegate conflict resolution and checks against
+the combined result, then personally inspect the returned diff and evidence.
+Worker checks do not establish that independently changed
 branches work together. If integration is not authorized, present verified
 commits and the concrete integration proposal instead.
 

@@ -3,6 +3,9 @@
 Use this for hands-off execution of an authorized assignment. The normal endpoint
 is verified task-owned commits, plus integration where already authorized. Infer
 acceptance from the selected roadmap item; do not make the user write a work plan.
+Recovery preserves the leader's orchestration role: delegate project changes and
+integration, inspect returned evidence, and keep ownership and follow-up current.
+An unfinished assignment does not authorize the leader to become an implementer.
 
 ## One roster
 
@@ -16,7 +19,7 @@ roster. Upgrade an existing roster in place; retain its decisions and task ident
   "thread_id": "actual-leader-thread-id",
   "objective": "Selected roadmap item and authorized integration endpoint",
   "status": "active",
-  "next_action": "Review the returned worker diff and run its missing CLI case",
+  "next_action": "Inspect the returned worker diff and delegate its missing CLI case",
   "progress": "Actual worker commit/test result or observed state change",
   "waiting_on": [],
   "deadline": 1800000000,
@@ -85,9 +88,11 @@ coordinator. Use a clear prompt equivalent to:
 > Run `python3 [installed completion.py] check [leader-thread-id]`. If the check
 > exits nonzero or does not return `decision: block`, pause this heartbeat and
 > report completion, the concrete blocker, or the exhausted recovery bound accurately.
-> Otherwise reconcile actual worker states and Git, carry out the next authorized
-> step, consume worker handoffs, review, repair, verify, commit, and integrate through
-> the recorded endpoint. Keep the roster current. Do not launch duplicate workers,
+> Otherwise reconcile actual worker states and Git, coordinate the next authorized
+> step, consume worker handoffs, and delegate repairs, checks, commits and integration
+> through the recorded endpoint. Personally inspect returned diffs and evidence.
+> Do not implement project changes yourself; queue work when worker slots are full.
+> Keep the roster current. Do not launch duplicate workers,
 > new roadmap items, or publish. Pause this heartbeat when complete, blocked, or
 > paused. Do not reset recovery counters or extend the deadline automatically.
 
@@ -116,7 +121,7 @@ failures may prevent execution; do not promise automatic recovery from all of th
 ## Prove the cycle
 
 Trial against one existing assignment. Observe a real incomplete handoff, the
-leader's concrete repair or integration action, the returned result, and its
+leader's concrete repair or integration dispatch, the returned result, and its
 verification without another user nudge. Also verify clean completion stops,
 unregistered worker threads are untouched, and interruption/no-progress bounds stop
 recovery. Report adapter tests, actual Stop execution, scheduled heartbeat execution,
