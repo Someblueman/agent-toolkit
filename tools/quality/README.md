@@ -87,6 +87,10 @@ that cannot be established by an automated command; use an empty list if none is
 The agent/reviewer reports that evidence, justified non-applicability, or unresolved
 limitations. The hook cannot certify visual quality or the relevance of a test from an
 exit code. Manual-stage commands are also listed as outstanding evidence at Stop.
+The completion reminder appears once per source/configuration state in a session.
+Unchanged follow-up turns stay quiet; relevant source or criteria changes produce a new
+reminder. Suppressing a repeated reminder does not mark manual verification complete or
+change a goal's status.
 
 There is no requirement for a new test, a test count, or a coverage percentage. Use
 existing useful tests, builds, type checks, native CLI/browser workflows and proportionate

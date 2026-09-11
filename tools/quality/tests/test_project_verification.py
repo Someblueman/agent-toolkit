@@ -108,7 +108,9 @@ class ProjectVerification(Repository):
         ]
         self.assertIn("changed controls", prompt)
         result = self.hook("Stop")
-        self.assertIn("Overall green still requires", result["systemMessage"])
+        self.assertIn(
+            "completion is not assessed by this hook", result["systemMessage"]
+        )
         self.assertIn("Play the changed controls", result["systemMessage"])
         records = [
             json.loads(line)
@@ -124,6 +126,36 @@ class ProjectVerification(Repository):
         config["verification"]["manual"] = []
         self.write_config(config)
         self.assertEqual(self.hook("Stop"), {})
+
+    def test_manual_reminder_is_quiet_until_sources_or_criteria_change(self):
+        config = self.config()
+        config["verification"]["manual"] = ["Inspect the changed behavior."]
+        self.write_config(config)
+        self.hook("UserPromptSubmit")
+        first = self.hook("Stop")
+        self.assertNotIn("decision", first)
+        self.assertIn("Inspect the changed behavior", first["systemMessage"])
+        self.assertEqual(self.hook("Stop", stop_hook_active=True), {})
+        self.assertEqual(
+            self.hook("UserPromptSubmit", prompt="Why is the campaign blocked?"), {}
+        )
+        self.assertEqual(self.hook("Stop"), {})
+        records = next((self.root / "state").glob("*.jsonl")).read_text().splitlines()
+        self.assertEqual(json.loads(records[-1])["outcome"], "manual_required")
+        self.source.write_text("value = 2\n")
+        self.assertIn(
+            "Inspect the changed behavior", self.hook("Stop")["systemMessage"]
+        )
+        self.assertEqual(self.hook("Stop"), {})
+        config["verification"]["manual"] = ["Inspect the new acceptance criterion."]
+        self.write_config(config)
+        self.assertIn("new acceptance criterion", self.hook("Stop")["systemMessage"])
+        config["checks"][0]["stage"] = "manual"
+        self.write_config(config)
+        self.hook("Stop")
+        self.assertEqual(self.hook("Stop"), {})
+        self.source.write_text("value = 3\n")
+        self.assertIn("new acceptance criterion", self.hook("Stop")["systemMessage"])
 
     def test_removing_configuration_cannot_bypass_stop(self):
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)

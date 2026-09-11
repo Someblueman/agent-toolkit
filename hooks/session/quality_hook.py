@@ -205,6 +205,10 @@ def process(event, payload, root, config, current, state, cache, metrics):
         manual = manual_requirements(config)
         if manual:
             metrics["outcome"] = "manual_required"
+            notice = digest([snapshot(root, config, include_manual=True), manual])
+            if state.get("manual_notice") == notice:
+                return {}
+            state["manual_notice"] = notice
             automatic = any(c["stage"] != "manual" for c in config["checks"])
             return reply(
                 event,
@@ -213,11 +217,12 @@ def process(event, payload, root, config, current, state, cache, metrics):
                     if automatic
                     else "Automated repository checks: none configured. "
                 )
-                + "Overall green still requires relevant manual evidence:\n- "
+                + "Manual verification criteria (completion is not assessed by this hook):\n- "
                 + "\n- ".join(manual)
                 + "\nReport the evidence, justified non-applicability, or unresolved limitations. "
                 "The hook has not verified these criteria.",
             )
+        state.pop("manual_notice", None)
         return {}
     if payload.get("stop_hook_active") or state.get("pending"):
         return reply(
