@@ -122,9 +122,12 @@ class IncrementalTests(Repository):
         (self.root / "linter.py").write_text(
             "import sys\nprint('lint 1.0.0')\nraise SystemExit(int('--slow' in sys.argv))\n"
         )
-        self.hook("UserPromptSubmit")
+        prompt = self.hook("UserPromptSubmit")["hookSpecificOutput"][
+            "additionalContext"
+        ]
+        self.assertIn("slow analysis", prompt)
         self.source.write_text("value = 2\n")
-        self.assertIn("slow analysis", self.hook("Stop")["systemMessage"])
+        self.assertEqual(self.hook("Stop"), {})
         self.assertEqual(self.cli("check").returncode, 1)
 
     def test_preflight_requires_all_automated_tools(self):

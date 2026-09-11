@@ -86,11 +86,11 @@ native commands in `checks`. For example, a game might define:
 that cannot be established by an automated command; use an empty list if none is needed.
 The agent/reviewer reports that evidence, justified non-applicability, or unresolved
 limitations. The hook cannot certify visual quality or the relevance of a test from an
-exit code. Manual-stage commands are also listed as outstanding evidence at Stop.
-The completion reminder appears once per source/configuration state in a session.
-Unchanged follow-up turns stay quiet; relevant source or criteria changes produce a new
-reminder. Suppressing a repeated reminder does not mark manual verification complete or
-change a goal's status.
+exit code. Manual criteria and manual-stage commands remain available in preflight and
+`doctor`; review context includes the configured manual criteria. Successful Stop hooks
+emit no manual checklist, including after edits or in a new session. The local outcome
+log still records `manual_required`; silence does not certify manual evidence or change
+a goal's status.
 
 There is no requirement for a new test, a test count, or a coverage percentage. Use
 existing useful tests, builds, type checks, native CLI/browser workflows and proportionate

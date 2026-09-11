@@ -174,8 +174,7 @@ def process_locked(payload, metrics, root, config, path, cache_path):
                 "Sources changed during review; rerun verification on the final files"
             )
         if review:
-            manual = result.get("systemMessage", "")
-            result = reply(event, review + ("\n" + manual if manual else ""), block)
+            result = reply(event, review, block)
     result = add_preflight(event, result, message)
     for target, value in ((path, state), (cache_path, cache)):
         work_review.save(target, value)
@@ -202,27 +201,8 @@ def process(event, payload, root, config, current, state, cache, metrics):
         state["baseline"] = current
         state.pop("pending", None)
         state.pop("fast_checked", None)
-        manual = manual_requirements(config)
-        if manual:
+        if manual_requirements(config):
             metrics["outcome"] = "manual_required"
-            notice = digest([snapshot(root, config, include_manual=True), manual])
-            if state.get("manual_notice") == notice:
-                return {}
-            state["manual_notice"] = notice
-            automatic = any(c["stage"] != "manual" for c in config["checks"])
-            return reply(
-                event,
-                (
-                    "Automated repository checks passed or have valid cached results. "
-                    if automatic
-                    else "Automated repository checks: none configured. "
-                )
-                + "Manual verification criteria (completion is not assessed by this hook):\n- "
-                + "\n- ".join(manual)
-                + "\nReport the evidence, justified non-applicability, or unresolved limitations. "
-                "The hook has not verified these criteria.",
-            )
-        state.pop("manual_notice", None)
         return {}
     if payload.get("stop_hook_active") or state.get("pending"):
         return reply(
