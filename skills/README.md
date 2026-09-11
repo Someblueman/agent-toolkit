@@ -42,7 +42,8 @@ description: One-line summary of what this skill does and when to load it.
 Codex copies packages selected by `configs/codex/skills.txt`. OMP links this entire directory,
 so all packages are visible there. Other adapters should consume these same packages.
 
-Visibility does not establish runtime support: `team-leader` requires Codex goal and
-heartbeat tools, `teamwork-preview` requires the Codex collaboration capabilities described
+Visibility does not establish runtime support: `team-leader` uses native collaboration
+for specialist subagents, Codex app tools for larger tasks, and heartbeat recovery.
+`teamwork-preview` requires the Codex collaboration capabilities described
 in its instructions, and `workflow` requires the external `afk` CLI. Their instructions and
 requirements remain part of the central package; relocation does not port those workflows.

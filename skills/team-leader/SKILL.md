@@ -1,13 +1,13 @@
 ---
 name: team-leader
-description: Coordinate separate Codex app tasks across project worktrees from one main thread. Use when the user asks for a team leader, ongoing worktree coordination, or a single point of contact for multiple tasks; ordinary implementation and status questions do not authorize dispatch.
+description: Lead project work with specialist subagents and separate Codex app tasks. Use when the user asks for a team leader or a single point of contact for delegated work; ordinary implementation and status questions do not authorize dispatch.
 ---
 
 # Team Leader
 
 Keep the current thread as the user's point of contact and orchestrator.
-Use separate app tasks for independently useful work, and take responsibility
-for following up until the agreed work is verified or concretely blocked.
+Choose workers to fit each assignment, and take responsibility for following up
+until the agreed work is verified or concretely blocked.
 This skill works across projects; discover each repository's instructions,
 toolchain, and acceptance checks instead of assuming project-specific commands.
 
@@ -32,26 +32,33 @@ Delegate project changes, including source, tests, build/CI wiring, documentatio
 repair, commits, and integration/conflict resolution. Delegate substantial research,
 test execution, and independent review too. Do not reserve an implementation slice
 for yourself or take over because a change looks small, a worker is slow or blocked,
-or all worker slots are occupied. Queue dependent work or reuse a finished worker;
+or all worker slots are occupied. Queue work until capacity becomes available;
 the leader is not an extra worker beyond the concurrency limit. Only an explicit
 user instruction assigning direct implementation to the leader changes this role.
 
 ## Establish ownership
 
-Resolve the requested projects and scope with `list_projects` and `list_threads`.
-Read relevant existing tasks before creating replacements. Adopt only tasks
-within the user's requested scope; unrelated tasks remain outside the roster.
-Check each adopted task's current assignment, checkout, dirty state, and latest
-evidence before steering it. If another leader owns it, settle ownership before
-dispatching competing instructions.
+Start from the user's current request, checkout, and this leader's roster. Create
+a fresh worker for a new assignment. Reuse a worker only to continue or repair its
+same assignment, or when the user explicitly names it for reuse. Project relevance,
+an active/idle status, or a finished earlier task does not authorize reassignment.
+Do not search thread history for available workers. Reviving an archived task or
+reassigning another leader requires the user's explicit selection. Read prior work
+as evidence without sending it new work.
+
+Use `list_projects` to resolve saved projects when an app task is needed. Use
+`list_threads` only to locate a user-identified task or reconcile this roster's
+known tasks. Before an authorized reuse, verify assignment, ownership, checkout,
+dirty state, and latest evidence; resolve competing ownership before dispatch.
 
 Agree only the missing decisions that affect execution: outcome, permitted
 projects, worktree/task creation, integration destination and authority, and
 any requested concurrency or time limit. An explicit request to dispatch work
 across worktrees authorizes those tasks and worktrees within that scope. Merely
 loading this skill or asking for status does not. Do not repeat settled questions.
-Default to at most three active worker tasks if no limit is specified; keep
-dependent or overlapping changes sequential.
+Default to at most three active workers total across subagents and app tasks if no
+limit is specified. Keep dependent or overlapping changes sequential. Serialize
+Git staging/commits and checks that share mutable build outputs in one checkout.
 
 At the start of every implementation assignment, activate a four-hour recovery
 window with a heartbeat every five minutes. Do this before dispatching or
@@ -70,15 +77,16 @@ work; do not describe recovery as active until it is verified.
 Maintain one small Markdown coordination file outside project checkouts, under
 `$CODEX_HOME/team-leader/` (default `~/.codex/team-leader/`), in a directory unique
 to this leader. Record its location in the main thread. Reuse it when resuming.
-The leader alone writes it; workers return evidence through their task threads.
+The leader alone writes it; workers return evidence through their delegation tools.
 
 Record the objective and authorization boundaries, then one row per assignment:
-project, actual thread/host ID, worktree and branch, starting commit, owned scope,
+project, worker kind (subagent or app task), actual agent ID or thread/host ID,
+checkout and branch, starting commit, owned scope,
 dependencies, current status, latest evidence, and next action. Record unknown
 values as unknown until verified. Distinguish queued, starting, working, blocked,
 ready for review, verified, and integrated; a finished turn is not acceptance.
 Keep a short section for decisions and the next actions, not a second transcript.
-After interruption, reconcile the roster with live threads and Git before acting.
+After interruption, reconcile the roster with live workers and Git before acting.
 
 At each user follow-up, reconcile its requested outcome before trusting a terminal
 roster status. A request to extend or repair the selected work reopens the assignment:
@@ -99,16 +107,44 @@ On each follow-up or resumption, verify the heartbeat still exists, targets this
 leader and assignment, and is active while recovery is authorized. Repair missing
 or paused recovery within the existing deadline, respecting explicit suspension
 and exhausted bounds as described in the reference.
-Keep actual app task identities; do not switch to shared-process subagents halfway
-through a wave merely because the leader resumed in a different turn.
+Keep the recorded worker kind and identity when resuming an unfinished assignment.
+If its worker is unavailable, record that state, inspect and preserve its dirty
+diff, and reconcile saved evidence. Confirm it cannot still write before giving a
+fresh replacement the remaining scope and known edits; clarify ambiguous ownership
+before overwriting anything. Do not duplicate an active worker or switch delegation
+tools merely because the leader resumed.
 
-## Dispatch through app tasks
+## Choose and dispatch workers
 
-Use `create_thread` with the saved project ID and a worktree environment for
-authorized isolated Git work. Follow the tool's starting-state rules; do not
-invent branches or silently omit dirty changes the task depends on. For an
-existing task, use `send_message_to_thread` instead of creating a duplicate.
-Preserve requested models and effort; otherwise retain the app/task defaults.
+Use fresh native subagents by default for bounded writing, implementation,
+debugging, testing, research, and review. Give each a specific role and concrete
+assignment. A writer owns named files and returns the diff and checks; a debugger
+reproduces a named failure and returns its cause, scoped fix, and regression
+evidence; a tester runs specified acceptance checks and reports exact results.
+Testing and review are read-only unless repairs are explicitly assigned.
+
+Use a fresh app task for a larger feature, workstream, or multi-step assignment
+that needs its own ongoing conversation and independently resumable context, when
+new-task creation is authorized. Size and lifecycle determine this choice, not
+whether the task writes files or an old thread is available. A user request for
+subagents or separate tasks takes precedence. Worktree creation needs its own
+authorization; creating an app task does not imply an isolated checkout.
+
+For subagents, use `collaboration.spawn_agent`. Choose an available agent type
+suited to the role and put its specialization, scope, and acceptance in the prompt;
+do not invent registered types such as `debugger` or create global agent profiles
+just to label an assignment. Default to `fork_turns: "none"` with a self-contained
+brief and applicable instructions; inherit a bounded amount of history only when
+that assignment needs it. Do not carry unrelated history into a fresh worker. Subagents
+share the checkout, so exclusive edit ownership is coordination, not filesystem
+isolation. Follow up through `collaboration.send_message` while working or
+`collaboration.followup_task` to continue the same assignment after a handoff.
+
+For app tasks, use `create_thread` with the saved project ID and authorized
+environment. Follow the tool's starting-state rules; do not invent branches or
+silently omit dirty changes the task depends on. Use `send_message_to_thread` only
+for the same assignment's follow-up or user-directed reuse. Preserve requested
+models and effort for either worker kind; otherwise retain the tool defaults.
 
 Do not assume a new app task inherits the leader's permissions. Check the available
 tool schema before dispatch: if it supports permission selection, preserve the
@@ -132,21 +168,26 @@ Every assignment should specify:
 - Applicable integration/publication boundaries. Workers must not independently
   merge into the shared destination or launch extra tasks unless delegated.
 
-Record the returned identifier immediately. A pending `clientThreadId` is not
+Record the worker kind and returned identifier immediately. A pending `clientThreadId` is not
 a ready `threadId`; resolve setup through the available app tools before sending
 follow-ups or waiting on it. Do not label a requested launch as running.
-If app task tools are unavailable, report the capability gap; do not silently
-substitute shared-checkout subagents or detached CLI processes.
+If the required delegation tools are unavailable, report the capability gap.
+Do not silently substitute another worker kind, an old thread, or detached CLI
+processes for the chosen assignment. Continue independent work through available
+tools within its own scope and authorization.
 
 ## Follow through
 
-Use `wait_threads` for completion/attention and `read_thread` for relevant
-evidence. Use bounded waits of at most 60 seconds while actively coordinating,
+For subagents, consume returned messages and use `collaboration.list_agents` and
+`collaboration.wait_agent` to reconcile live status and handoffs. For app tasks,
+use `wait_threads` for completion/attention and `read_thread` for relevant evidence.
+Do not pass subagent IDs to app-task tools or assume subagents survive a new leader.
+Use bounded waits of at most 60 seconds while actively coordinating,
 and avoid repeatedly rereading unchanged status. Answer user steering in this
 main thread and route the resulting changes to affected workers.
 
 On completion, inspect the actual diff and checks. Send concrete repair requests
-to the same task for defects within scope. Dispatch newly unblocked assignments
+to the same worker for defects within its assignment. Dispatch newly unblocked assignments
 as capacity becomes available. For a repeated blocker without new evidence,
 stop retrying and report the decision or external change needed. Honor agreed
 time and cost bounds; do not manufacture additional work to keep workers busy.
@@ -154,8 +195,11 @@ time and cost bounds; do not manufacture additional work to keep workers busy.
 Continue waiting after a repair request, consume the repaired result, and recheck
 the affected acceptance criteria. Before closing the selected item, obtain one
 focused independent review against its original requirements and actual evidence.
-Record the reviewer task ID, reviewed revision or artifact, findings and their
-resolution in the roster. Review must cover the latest authorized scope and final
+Use a reviewer independent of the implementation. Start fresh unless continuing
+this assignment's review or the user explicitly selected a reviewer to reuse;
+verify that reviewer's independence and current scope before reuse. Record its
+worker kind and actual ID, reviewed revision or artifact, findings and resolution
+in the roster. Review must cover the latest authorized scope and final
 changes; an earlier review does not cover later implementation automatically.
 An unmet review requirement keeps the assignment active, even if tests pass.
 The reviewer identifies unmet requirements with evidence; it does not open a general

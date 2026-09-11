@@ -40,8 +40,10 @@ clock on a poll, worker handoff, interruption, or automatic recovery continuatio
 `progress` changes only for new observable evidence, not another
 poll, rewritten summary, or renewed intention. Keep detailed acceptance criteria,
 worker IDs/checkouts, review findings, and evidence in the Markdown body.
-`waiting_on` lists only worker/task IDs currently observed running. Refresh it from
-live state on recovery; clear IDs as soon as they finish. Waiting on real running
+`waiting_on` lists only IDs currently observed running through the correct tool:
+native collaboration for subagents, app-task tools for threads. Record each
+worker's kind in the roster body. Refresh live state on recovery; clear IDs as soon
+as they finish or are no longer available. Waiting on real running
 work does not consume failed-recovery attempts, but the deadline still applies.
 
 Statuses: `active`, `complete`, `blocked`, `paused`. Complete requires evidence
@@ -106,6 +108,9 @@ coordinator. Use a clear prompt equivalent to:
 > Otherwise reconcile actual worker states and Git, coordinate the next authorized
 > step, consume worker handoffs, and delegate repairs, checks, commits and integration
 > through the recorded endpoint. Personally inspect returned diffs and evidence.
+> Use the skill's delegation rules: fresh specialist subagents for bounded new
+> assignments, fresh authorized app tasks for larger independent work. Continue
+> an existing worker only for its same assignment or explicit user-directed reuse.
 > Do not implement project changes yourself; queue work when worker slots are full.
 > Keep the roster current. Do not launch duplicate workers,
 > new roadmap items, or publish. Pause this heartbeat when complete, blocked, or
