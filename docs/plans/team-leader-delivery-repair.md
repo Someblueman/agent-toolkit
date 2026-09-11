@@ -13,11 +13,17 @@ Implement the repair in the canonical `skills/team-leader/` package, with relate
 documentation and affected tests. Keep it usable across repositories. Hydra is the
 observed failure case and a possible later acceptance trial, not a dependency.
 
-Preserve the current orchestration-only role, fresh-worker policy, independent review,
-repository acceptance requirements, publication boundaries, and default four-hour recovery
-window. Changing the leader into an implementer is a separate design choice, not assumed
-authorization. No new scheduler, agent framework, global permission changes, or increased
-agent limits are proposed.
+The user clarified the intended model: recurring app tasks together with native subagents.
+That hybrid is confirmed intent. The routing and ownership rules below are proposed ways
+to implement it; they have not yet been approved for execution.
+
+Preserve the current orchestration-only leader role, independent review, repository
+acceptance requirements, publication boundaries, and default four-hour recovery window.
+Replace the blanket fresh-worker default with explicit lifecycle rules: continuing an owned
+workstream uses its recurring task; a new bounded specialist assignment uses a fresh
+subagent. Keep the prohibition on opportunistically repurposing unrelated old tasks.
+Changing the leader into an implementer is a separate design choice. No new scheduler,
+agent framework, global permission changes, or increased agent limits are proposed.
 
 ## Verified diagnosis
 
@@ -41,9 +47,13 @@ late discovery of acceptance failures. Recovery alone does not solve that proble
 
 The current skill reinforces the bottleneck: `SKILL.md` requires delegating all project
 changes, tests, repairs, commits, and integration, including when slots are full. It also
-defaults to fresh workers for new assignments. Those choices are workable only when an
-assignment owns a cohesive deliverable and the capacity/error path is explicit. Otherwise,
-small steps become additional dispatch and review dependencies.
+defaults to fresh workers for new assignments without clearly distinguishing a workstream
+from its individual implementation steps. Continuing an existing workstream is allowed,
+but the ambiguous unit of assignment encourages routing every bounded step to another
+subagent. Recurring app tasks consequently become an exception or a capacity workaround
+instead of the durable owners of larger work. This conflicts with the user's clarified
+hybrid intent. The earlier prohibition on using arbitrary old tasks must not prevent
+continuation of this leader's deliberately established workstream tasks.
 
 The roster had grown to 511 lines, 34 third-level headings, and 64 evidence strings spanning
 earlier CI/publication work and current interaction work. It retains useful evidence, but
@@ -90,7 +100,38 @@ outside current completion evidence; do not append a new operational plan at eve
 Preserve historical evidence and decisions without treating earlier authorization as
 permission for a new objective.
 
-### 2. Delegate complete behavioral slices
+### 2. Separate recurring task ownership from specialist assignments
+
+Use this routing model explicitly:
+
+| Unit | Owner and lifetime | Continuation |
+| --- | --- | --- |
+| Selected project outcome | The leader coordinates scope, dependencies, acceptance, and recovery. | Keep the same leader and current roster. |
+| Larger workstream with related implementation cycles | An authorized app task owns its deliverables, implementation, tests, repairs, and scoped commits. | Return to the same recorded task for subsequent slices within its authorized scope. A finished turn or committed slice does not retire it. |
+| Bounded specialist job | A native subagent investigates, writes an independently owned change, reproduces a defect, tests, or independently reviews a named result. | Continue the same specialist for repairs to that job; use a fresh one for a different job. Its handoff does not replace the workstream owner. |
+
+Here, recurring means returning to the same task when related work is ready. It does not
+add a scheduled automation to every worker. Keep the existing single leader heartbeat.
+Do not create idle role tasks speculatively: establish an app task when an authorized
+workstream needs one, then retain its identity and ownership through that workstream.
+
+Record the workstream owner separately from any temporary specialist and its current file
+ownership. The leader routes a related next step to the existing owner before considering
+a fresh dispatch. Reopening the task is subject to current scope and live ownership, not a
+requirement to obtain repeated permission for the same authorized work. Reusing that task
+does not authorize a new roadmap item, worktree, publication, or access to unrelated work.
+
+Do not introduce a mandatory second orchestration layer. The app task implements its
+workstream. The leader can assign a specialist alongside it only with a specific boundary
+and useful independent work; no writer may simultaneously own the same files. Any delegated
+subagent use must remain inside the agreed team concurrency and ownership limits.
+
+For example, a task owning the selected interaction work keeps its identity while it
+implements an attention slice, repairs review findings, commits it, and moves to the next
+already-authorized navigation slice. A temporary reviewer independently checks the named
+revision. The leader sends resulting defects back to the interaction task, rather than
+creating separate replacement implementation, repair, and commit tasks. An unrelated old
+CI task is not reused merely because it exists.
 
 Assign one implementation owner the related source, tests, necessary documentation, and
 repairs for a usable slice. Use separate workers only for work that can make independent
@@ -103,12 +144,12 @@ does not remove this dependency. For example, an attention slice must carry the 
 identity from the public projection into the TUI and prove client-local acknowledgement;
 “add the parser” alone is not its acceptance endpoint.
 
-Choose the worker lifecycle at assignment time: a fresh native specialist for bounded
-work; a fresh app task for an authorized larger workstream needing independent continuation.
-Keep the same owner through repairs to the same assignment. After acceptance, that owner
-can make its authorized scoped commit under the serialized Git lease; a commit-only worker
-is unnecessary. Preserve the existing default of at most three active workers, not a target
-to keep three busy.
+For an isolated bounded change without a larger workstream, a native specialist can own
+the complete change directly. Do not force it through an app task merely to fit the table.
+After acceptance, the implementation owner can make its authorized scoped commit under the
+serialized Git lease; a commit-only worker is unnecessary. Preserve the existing default
+of at most three active workers, not a target to keep three busy. Separately record actual
+runtime capacity errors; a saved recurring task is not necessarily actively executing.
 
 ### 3. Gate handoffs on usable evidence and stop repetitive repair dispatch
 
@@ -145,10 +186,13 @@ that capacity or the relevant worker state changed. A failed dispatch is not a l
 
 Use only lifecycle operations actually exposed by the runtime. Do not invent a close tool
 or assume interrupting or archiving releases a slot. Continue the same viable assignment
-when supported. For a larger workstream, use an already-authorized app task when that
-lifecycle fits, explicitly record the transition, and prevent overlapping writers. Otherwise
-wait for a meaningful state change or report the exact missing capability/authorization
-once while continuing independent authorized work. Preserve user worker-kind preferences.
+when supported. An existing app-task owner remains responsible for its workstream when a
+temporary specialist is unavailable; return work within its ownership to it once conflicting
+writers are ruled out. If the blocked operation is independent review, the author cannot
+substitute for that reviewer. For a misplaced larger assignment, use an already-authorized
+app task when that lifecycle fits, explicitly record the transition, and prevent overlapping
+writers. Otherwise wait for a meaningful state change or report the exact missing
+capability/authorization once while continuing independent authorized work.
 
 ### 5. Keep recovery honest and qualify delivery separately
 
@@ -169,8 +213,9 @@ runtime correction against that reproduction rather than adding guessed liveness
 1. **Revise the canonical workflow.** Update `skills/team-leader/SKILL.md` and
    `references/completion.md`; align `scripts/completion.py` continuation wording only if
    needed. Update `docs/catalog.md` or adapter documentation only where behavior descriptions
-   become inaccurate. Keep the policies coherent, concise, and free of contradictory old
-   dispatch or review rules. Do not edit installed outputs directly.
+   become inaccurate. Rewrite ownership, dispatch, follow-up, reviewer reuse, and recovery
+   together so no blanket fresh-assignment rule contradicts recurring workstream ownership.
+   Keep the policies coherent and concise. Do not edit installed outputs directly.
 2. **Verify compatibility.** Run the ten completion tests, affected configured lint/format
    checks if Python changes, relevant installer tests, and `git diff --check`. Exercise
    temporary installation and repeat installation; compare the live install read-only.
@@ -185,6 +230,9 @@ runtime correction against that reproduction rather than adding guessed liveness
 
 The delivery trial must show:
 
+- A workstream task keeps the same actual task ID through a slice, any repair, and the next
+  related already-authorized slice. A temporary specialist can finish without retiring or
+  replacing that owner. No arbitrary old task is repurposed and no new scope is inferred.
 - Current user authorization is reflected before the next dependent action; a status query
   alone does not expand scope or renew recovery.
 - A cohesive owner returns public-path and failure evidence plus applicable quality results;
@@ -202,10 +250,11 @@ The delivery trial must show:
 
 ## Handoff and next decision
 
-The recommended first change preserves the user's delegation model and repairs assignment
-granularity, authorization reconciliation, handoff quality, and capacity handling. A working
-leader that directly implements would relax one constraint but would not itself fix invalid
-tests, late contract discovery, or stale authorization; it remains an optional separate choice.
+The confirmed direction is recurring app tasks plus bounded specialist subagents. The
+recommended implementation makes the workstream task the continuing delivery owner and
+uses specialists where they add independent value. It also repairs authorization
+reconciliation, handoff quality, and capacity handling. A working leader that directly
+implements remains an optional separate choice; the hybrid does not require that change.
 
 This plan is not approved for execution. Do not message the Hydra leader, change its roster
 or heartbeat, clean up its workers, edit its checkout, or install the proposed workflow from
