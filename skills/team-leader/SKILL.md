@@ -60,14 +60,15 @@ Default to at most three active workers total across subagents and app tasks if 
 limit is specified. Keep dependent or overlapping changes sequential. Serialize
 Git staging/commits and checks that share mutable build outputs in one checkout.
 
-At the start of every implementation assignment, activate a four-hour recovery
-window with a heartbeat every five minutes. Do this before dispatching or
-redirecting workers; do not ask for a duration unless the user's instructions
-are ambiguous. Honor an explicit duration, stop time, cadence, or recovery opt-out.
-Reuse an unexpired window for the same assignment without extending its deadline.
+Keep one recovery window and one heartbeat per leader roster, covering all of its
+worker assignments. Default to four hours with a heartbeat every five minutes;
+activate it before the first worker dispatch. Adding, replacing, or redirecting
+workers does not create another heartbeat or extend the deadline. Do not ask for a
+duration unless the user's instructions are ambiguous. Honor an explicit duration,
+stop time, cadence, or recovery opt-out. Reuse the roster's unexpired window.
 A new leader must activate recovery for its own thread; another leader's heartbeat
 does not cover it. Follow [completion and recovery](references/completion.md) to
-create or reactivate the heartbeat, verify its actual target and active state,
+create or reactivate that roster's heartbeat, verify its actual target and active state,
 and record its ID and deadline. Report the stop time in the first status update.
 If setup fails, report the concrete failure and continue independent authorized
 work; do not describe recovery as active until it is verified.
@@ -104,7 +105,7 @@ For hands-off execution, use [completion and recovery](references/completion.md)
 Its JSON header belongs in this same roster, not a second task ledger. Update the
 roster whenever a worker hands back, review finds a defect, or integration changes.
 On each follow-up or resumption, verify the heartbeat still exists, targets this
-leader and assignment, and is active while recovery is authorized. Repair missing
+leader and roster, and is active while recovery is authorized. Repair missing
 or paused recovery within the existing deadline, respecting explicit suspension
 and exhausted bounds as described in the reference.
 Keep the recorded worker kind and identity when resuming an unfinished assignment.
