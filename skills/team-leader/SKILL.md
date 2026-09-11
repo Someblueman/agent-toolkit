@@ -53,17 +53,17 @@ loading this skill or asking for status does not. Do not repeat settled question
 Default to at most three active worker tasks if no limit is specified; keep
 dependent or overlapping changes sequential.
 
-At the start of an implementation assignment, ask for the missing recovery window
-in the first response, before dispatching or redirecting workers. Do not defer the
-question until heartbeat setup or until the user asks why recovery is inactive.
-If a window already applies to this assignment, reuse it without asking again.
-Ask for a duration or stop time, explaining that it bounds automatic recovery,
-separately from heartbeat cadence. There is no default window. Use an available
-asynchronous input tool and continue independent authorized work while waiting;
-otherwise ask directly. Do not activate the heartbeat or choose a deadline before
-the user answers. Once answered, activate recovery promptly before waiting on workers.
-Record the agreed window and its resolved deadline in the roster. If an expired
-window needs renewal, ask again unless the user already specified the new window.
+At the start of every implementation assignment, activate a four-hour recovery
+window with a heartbeat every five minutes. Do this before dispatching or
+redirecting workers; do not ask for a duration unless the user's instructions
+are ambiguous. Honor an explicit duration, stop time, cadence, or recovery opt-out.
+Reuse an unexpired window for the same assignment without extending its deadline.
+A new leader must activate recovery for its own thread; another leader's heartbeat
+does not cover it. Follow [completion and recovery](references/completion.md) to
+create or reactivate the heartbeat, verify its actual target and active state,
+and record its ID and deadline. Report the stop time in the first status update.
+If setup fails, report the concrete failure and continue independent authorized
+work; do not describe recovery as active until it is verified.
 
 ## Keep one roster
 
@@ -95,6 +95,10 @@ disagreement; do not repair app storage as part of project coordination.
 For hands-off execution, use [completion and recovery](references/completion.md).
 Its JSON header belongs in this same roster, not a second task ledger. Update the
 roster whenever a worker hands back, review finds a defect, or integration changes.
+On each follow-up or resumption, verify the heartbeat still exists, targets this
+leader and assignment, and is active while recovery is authorized. Repair missing
+or paused recovery within the existing deadline, respecting explicit suspension
+and exhausted bounds as described in the reference.
 Keep actual app task identities; do not switch to shared-process subagents halfway
 through a wave merely because the leader resumed in a different turn.
 
@@ -164,9 +168,10 @@ when repair is within scope, not automatic reasons to return the task to the use
 
 A skill is not a scheduler. Stay with active authorized work. A request for
 hands-off completion authorizes bounded recovery of that selected assignment:
-install its completion check and create/reuse a heartbeat on this leader thread
-as described in the recovery reference. Confirm the heartbeat exists before
-promising recovery. It does not authorize other roadmap items or publication.
+install its completion check and keep the verified heartbeat on this leader thread
+active within the recovery window as described in the recovery reference. A roster
+entry or installed hook alone does not establish scheduled recovery. It does not
+authorize other roadmap items or publication.
 
 ## Integrate and report
 
