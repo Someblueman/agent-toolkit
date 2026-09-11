@@ -90,8 +90,15 @@ def validate(data):
 
 
 def validate_verification(verification):
-    if not isinstance(verification, dict) or set(verification) != {"green", "manual"}:
-        raise SetupError("verification requires green and manual fields")
+    if not isinstance(verification, dict) or set(verification) - {"review"} != {
+        "green",
+        "manual",
+    }:
+        raise SetupError(
+            "verification requires green and manual fields; review is optional"
+        )
+    if "review" in verification and type(verification["review"]) is not bool:
+        raise SetupError("verification.review must be a boolean")
     if not isinstance(verification["green"], str) or not verification["green"].strip():
         raise SetupError(
             "verification.green must describe the repository's acceptance criteria"

@@ -46,9 +46,11 @@ Once configured, relevant edits run fast checks and Stop verifies the entire dec
 automated inventory, reusing successful results only for identical inputs. This
 repository includes installer, quality-hook and leader completion tests. Start setup
 with `tools/quality/bin/quality setup --dry-run`; `doctor` and `check` remain available
-for diagnosis and reruns. Hook registration uses `install-codex`; retain an existing
-global registration instead of adding a duplicate project handler. For any repository
-with its own `quality.json`, run `tools/quality/bin/quality --root /path/to/repo setup --codex`
-from this checkout to provision tools and register hooks together. Matching user-level
-JSON hooks are reused. See the quality guide for first-time profiles and the optional
-`install-codex --global` registration. No GitHub Actions service is required.
+for diagnosis and reruns. Hooks are opt-in per repository: for a project with its own
+`quality.json`, run `tools/quality/bin/quality --root /path/to/repo setup --codex`
+from this checkout. This provisions tools and registers local hooks. For setup guidance
+before a configuration exists, explicitly opt in with `install-codex` first.
+Remove former global registrations with `tools/quality/bin/quality uninstall-codex --global`.
+An optional `verification.review: true` runs one Luna max review of the completed work,
+including intermediate commits, after automated checks pass. See the quality guide
+for setup and review boundaries. No GitHub Actions service is required.

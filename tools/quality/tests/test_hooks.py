@@ -7,7 +7,8 @@ class HookTests(Repository):
     def test_unverified_initial_snapshot_is_checked_at_stop(self):
         self.config("raise SystemExit(1)")
         self.assertIn(
-            "Verification preflight", self.hook("UserPromptSubmit")["systemMessage"]
+            "Verification preflight",
+            self.hook("UserPromptSubmit")["hookSpecificOutput"]["additionalContext"],
         )
         self.assertEqual(self.hook("Stop")["decision"], "block")
 

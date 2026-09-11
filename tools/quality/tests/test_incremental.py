@@ -140,7 +140,8 @@ class IncrementalTests(Repository):
         self.write_config(config)
         (self.root / "src/other.sh").write_text("#!/bin/sh\nexit 0\n")
         self.assertIn(
-            "missing-shellcheck", self.hook("UserPromptSubmit")["systemMessage"]
+            "missing-shellcheck",
+            self.hook("UserPromptSubmit")["hookSpecificOutput"]["additionalContext"],
         )
         self.source.write_text("value = 2\n")
         self.assertEqual(self.hook("Stop")["decision"], "block")

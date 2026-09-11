@@ -61,14 +61,16 @@ the current lifecycle adapter targets Codex on macOS/Linux.
 
 ## Define green for the project
 
-`UserPromptSubmit` looks for the current project's configuration, stopping at the nearest
+After explicit project installation, `UserPromptSubmit` looks for the current project's configuration, stopping at the nearest
 Git boundary. A nested repository cannot inherit its parent's verification policy.
 If `quality.json` or its `verification` section is missing, the hook makes setup the first
 implementation task. It directs the agent to read that repository's instructions,
 development docs, CI and native commands, then record useful acceptance criteria and
 run the selected checks to establish a baseline. Read-only requests report missing setup
 without authorizing project changes. Outside Git, an explicit `quality.json` identifies
-the project; ordinary folders without either remain unaffected.
+the project. Unregistered Git repositories and ordinary folders remain unaffected.
+To request setup guidance before creating `quality.json`, opt in first with
+`quality --root /path/to/repo install-codex`.
 
 Add this section to the repository's existing version-1 configuration, alongside the
 native commands in `checks`. For example, a game might define:
@@ -131,7 +133,8 @@ project manifest and lockfile. Inspect the setup dry-run first.
 
 `quality.json` is a trusted executable configuration, version 1:
 
-- `verification`: `green` acceptance description and `manual` evidence descriptions.
+- `verification`: `green` acceptance description, `manual` evidence descriptions, and
+  optional boolean `review` (default false) for one completed-work Luna review.
   Required for lifecycle verification; absent in unconfigured language starters.
 - `roots`: explicit files/directories, relative to the repository root.
 - `exclude`: repository-relative glob patterns. No blanket exclusion of `packages/`.
@@ -210,25 +213,27 @@ test. The real-tool boundary tests below provide that additional evidence.
 ```sh
 quality --root /path/to/project install-codex --dry-run
 quality --root /path/to/project install-codex
-# Optional: register project setup and verification hooks once for all repositories.
-quality install-codex --global --dry-run
-quality install-codex --global
+# One-time removal if the former global registration is present:
+quality uninstall-codex --global
 ```
 
-Use the full executable path above if `quality` is not on PATH. This merges a command
-adapter into the project's `.codex/hooks.json`, preserving other events and handlers.
-`--global` targets `$CODEX_HOME/hooks.json` (default `~/.codex/hooks.json`) and needs
-no project configuration. Project installation reuses matching user-level JSON
-registrations and adds only missing events. Existing project handlers are preserved;
-pre-existing duplicates are not removed. Duplicate detection covers these two JSON
-files; inline TOML, plugins and managed sources remain visible through Codex `/hooks`.
-Reinstallation is idempotent; a different existing quality adapter causes a conflict
-instead of being overwritten. The command references this checkout with an absolute
-path. Keep the checkout at that location or review/update the hook command after moving it.
-It does not change feature flags, permissions, hook trust or enablement. Registration
-does not establish runtime activation: review the configured sources in Codex `/hooks`.
-Keep one enabled registration for each event. This follows the
-[Codex registration and trust contract](https://learn.chatgpt.com/docs/hooks).
+Use the full executable path above if `quality` is not on PATH. Activation is explicit
+per repository. The installer merges the command adapter into `.codex/hooks.json`,
+preserving other handlers. `setup --codex` also provisions the project's declared tools.
+`install-codex` works before `quality.json` exists, so the next prompt can request setup.
+Global installation is no longer supported; `uninstall-codex --global` removes only
+recognized toolkit handlers from `$CODEX_HOME/hooks.json`, preserving unrelated hooks.
+A remaining global adapter is a setup conflict, not an inherited project opt-in.
+
+Reinstallation is idempotent. A different existing quality adapter causes a conflict;
+the exact former 300-second Stop definition is upgraded to 1800 seconds to accommodate
+verification and the separately bounded review. The command references this toolkit
+checkout with an absolute path. Keep it there or update the registration after moving it.
+The installer does not change feature flags, permissions, hook trust or enablement.
+Review/trust new definitions in Codex `/hooks`; formerly disabled project entries need
+to be enabled there. Keep one enabled handler per event. Other sources, including inline
+TOML, plugins and managed hooks, remain visible through `/hooks`.
+This follows the [Codex registration and trust contract](https://learn.chatgpt.com/docs/hooks).
 
 - `UserPromptSubmit` checks for project-specific verification setup first, then performs
   preflight on the first prompt in a session and after
@@ -255,14 +260,52 @@ Keep one enabled registration for each event. This follows the
 
 The adapter uses per-session state under `~/.cache/agent-toolkit/quality` (override with
 `QUALITY_HOOK_STATE_DIR` for tests). This is a cache, not an acceptance certificate. Hooks
-outside Git or a directory containing `quality.json` are inert. Missing setup in a
-Git repository prompts onboarding and reports incomplete verification at Stop. The final check reconciles
+in unconfigured repositories without a local registration are inert, even if an older
+Codex session still dispatches a removed global handler. Missing setup in an explicitly
+registered project prompts onboarding and reports incomplete verification at Stop. The final check reconciles
 the configured inventory, so shell edits do not have to be inferred from command text.
 
 Codex requires review/trust of new or changed hooks; installation does not establish it.
 The adapter follows the [official Codex hook contract](https://learn.chatgpt.com/docs/hooks).
 Post-tool feedback cannot undo an edit. Local hooks are guardrails, not an unbypassable
 security boundary. Hook activation and trust are separate from protocol verification.
+
+## Review completed work
+
+Add `"review": true` under the repository's `verification` object to enable review.
+It is off when omitted or false. Install the local hooks as above and trust/enable the
+updated Stop definition. The reviewer uses the installed, authenticated Codex CLI with
+`gpt-5.6-luna`, reasoning effort `max`, a read-only sandbox and a 15-minute process limit.
+This is a local CLI workflow using your Codex account/model service, not on-device inference.
+It consumes account quota. No API key, GitHub integration or new worktree is required.
+
+The work interval starts at the first prompt and ends at the first successful completion
+verification. Steering prompts preserve its start; intermediate commits do not close it.
+The review compares exact before/after Git trees, including tracked changes and non-ignored
+untracked files. Unchanged pre-existing dirty content is excluded. The real index, branches
+and repository object store are preserved; snapshots live in the private hook cache.
+Git ignore rules apply. Conflicted, sparse or changed-submodule checkouts report review
+unavailable rather than claiming that a partial snapshot covers the work.
+
+After automated checks pass, Stop launches one native review and returns the report to the
+parent for assessment. The parent fixes valid findings within the authorized task and
+reruns relevant checks. Subsequent verification does not automatically launch another
+review. Timeouts, interruption, a missing report or a checkout changed during review are
+incomplete outcomes, never clean-review certificates. Manual criteria still require evidence.
+Reviewer child sessions skip this adapter, preventing recursive hooks and review loops.
+
+A successful Stop is the automatic boundary; the hook cannot infer that separate completed
+turns belong to a larger project. For work spanning several already completed turns, use an
+explicit on-demand review of the intended base/diff. Enabling review mid-turn has no opening
+snapshot, so that work also needs an on-demand review. The next prompt starts normal capture.
+
+The latest prompt, exact trees, native event log, stderr and report are stored in the
+session's `*.review/` cache directory. Reports identify the exact before/after tree IDs
+through `prompt.txt`. These artifacts can contain source and task text; the cache directory
+is private to the user. Later work in the same session replaces its latest report/logs.
+They remain until the session cache is removed; do not remove an active session's cache.
+No service or background polling process is installed. The checkout's quality lock remains
+held during the review, so concurrent hook attempts report busy rather than duplicate work.
 
 ## Verification
 
@@ -271,6 +314,9 @@ python3 -m unittest discover -s tools/quality/tests -v
 QUALITY_NATIVE=python,biome,eslint,rust,go,c-cpp,haskell,shell \
   python3 -m unittest discover -s tools/quality/tests -v
 tools/quality/bin/quality check
+# Optional real account-backed Luna review (consumes quota):
+QUALITY_NATIVE=review PYTHONPATH=tools/quality \
+  python3 -m unittest discover -s tools/quality/tests -p test_native_review.py -v
 ```
 
 The first command uses real subprocess fixtures without downloads. The second provisions
@@ -279,6 +325,10 @@ installed matching version. It checks actual lint failures and Python/Biome/Go/C
 boundaries, plus the real Ruff-to-Codex JSON feedback path. Cabal's fallback installation
 and a live Codex desktop turn are not covered by these tests. Hook protocol tests cover
 read-only turns, missing tools, retry bounds, repair, idempotence and existing-hook conflicts.
+Review tests cover multiple commits, dirty starts, unchanged work, scope stability, child-hook
+suppression, interruption, process-group timeout cleanup and the absence of recursive review.
+The optional account-backed test verifies that native Luna identifies a seeded regression
+across two commits and that the repair continuation does not launch another review.
 
 ### Local outcome log
 

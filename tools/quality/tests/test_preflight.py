@@ -17,13 +17,17 @@ class PreflightTests(Repository):
                 " print('lint 1.0.0')",
             )
         )
-        message = self.hook("UserPromptSubmit")["systemMessage"]
+        message = self.hook("UserPromptSubmit")["hookSpecificOutput"][
+            "additionalContext"
+        ]
         self.assertIn("No automated behavioral check declared", message)
         self.assertEqual(self.hook("UserPromptSubmit"), {})
         self.assertEqual((self.root / "versions").read_text(), "version\n")
         config["checks"][0]["kind"] = "test"
         self.write_config(config)
-        message = self.hook("UserPromptSubmit")["systemMessage"]
+        message = self.hook("UserPromptSubmit")["hookSpecificOutput"][
+            "additionalContext"
+        ]
         self.assertNotIn("No automated behavioral check declared", message)
         self.assertEqual((self.root / "versions").read_text(), "version\nversion\n")
 
@@ -50,7 +54,9 @@ class PreflightTests(Repository):
             )
         )
         self.write_config(config)
-        result = self.hook("UserPromptSubmit")["systemMessage"]
+        result = self.hook("UserPromptSubmit")["hookSpecificOutput"][
+            "additionalContext"
+        ]
         self.assertIn("manual (excluded from hooks): manual acceptance (test)", result)
         self.assertIn("No automated behavioral check declared", result)
         self.source.write_text("value = 2\n")
@@ -112,7 +118,9 @@ class PreflightTests(Repository):
             )
         )
         self.write_config(config)
-        initial = self.hook("UserPromptSubmit")["systemMessage"]
+        initial = self.hook("UserPromptSubmit")["hookSpecificOutput"][
+            "additionalContext"
+        ]
         self.assertNotIn("No automated behavioral check declared", initial)
         (self.root / "src/new.py").write_text("value = 2\n")
         result = self.hook("PostToolUse")["hookSpecificOutput"]["additionalContext"]

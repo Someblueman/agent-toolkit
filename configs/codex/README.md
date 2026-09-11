@@ -43,11 +43,14 @@ The anti-bloat script lives at `skills/pragmatic-engineering/scripts/check_anti_
 Quality hooks use the shared [quality installer](../../tools/quality/README.md), separately
 from skill materialization. Run `tools/quality/bin/quality --root /path/to/repo setup --codex`
 for a repository with its own `quality.json`. This provisions its selected tools and
-registers hooks, reusing matching user-level JSON handlers. For first-time setup, select
-the repository's language profiles and source roots as described in the quality guide.
+registers hooks only in that repository's `.codex/hooks.json`. For first-time setup,
+select the repository's language profiles and source roots as described in the quality guide.
+To opt in before defining `quality.json`, run `install-codex`; the next prompt requests
+that project's verification criteria. Unregistered, unconfigured repositories are inert.
 
-`tools/quality/bin/quality install-codex --global` registers project setup and verification
-hooks once in `CODEX_HOME`. Review/trust the definitions in Codex `/hooks`; installation
-preserves trust and enablement settings. In a Git repository without a complete
-`quality.json`, the prompt hook directs the agent to define that project's verification
-criteria first. It does not install tools or modify projects during hook execution.
+Global installation is no longer supported. Remove a former registration with
+`tools/quality/bin/quality uninstall-codex --global`; unrelated user hooks are preserved.
+Review/trust project definitions in Codex `/hooks`. Existing disabled local registrations
+remain disabled until enabled there. Installation does not grant trust or enablement.
+Repositories can separately enable one completed-work Luna max review with
+`verification.review: true`; see the quality guide for its scope and time limit.

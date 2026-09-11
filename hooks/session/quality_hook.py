@@ -6,11 +6,12 @@ import json
 import os
 import shlex
 import sys
-import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from quality_lib import work_review
+from quality_lib.codex_hooks import locally_registered
 from quality_lib.config import (
     SetupError,
     SnapshotChanged,
@@ -22,7 +23,7 @@ from quality_lib.runner import doctor, manual_requirements
 
 
 def reply(event, text, block=False):
-    if event == "PostToolUse":
+    if event in ("UserPromptSubmit", "PostToolUse"):
         return {
             "hookSpecificOutput": {"hookEventName": event, "additionalContext": text}
         }
@@ -98,7 +99,7 @@ def add_preflight(event, result, message):
         return result
     if not result:
         return reply(event, message)
-    if event == "PostToolUse":
+    if event in ("UserPromptSubmit", "PostToolUse"):
         result["hookSpecificOutput"]["additionalContext"] += "\n" + message
     else:
         result["systemMessage"] += "\n" + message
@@ -106,6 +107,8 @@ def add_preflight(event, result, message):
 
 
 def handle(payload, metrics):
+    if os.environ.get("QUALITY_REVIEW_CHILD") == "1":
+        return {}
     event = payload.get("hook_event_name")
     if event not in ("UserPromptSubmit", "PostToolUse", "Stop"):
         return {}
@@ -114,6 +117,9 @@ def handle(payload, metrics):
     except SetupError:
         return {}  # No Git repository or explicit project configuration.
     if not (root / "quality.json").is_file():
+        if not locally_registered(root):
+            metrics["outcome"] = "not_enabled"
+            return {}
         return {} if event == "PostToolUse" else setup_required(payload, root, metrics)
     config = load(root)
     if "verification" not in config and event != "PostToolUse":
@@ -142,21 +148,37 @@ def handle(payload, metrics):
                 payload,
                 "Quality check already running in this checkout; retry on the next event (not a pass).",
             )
-        # Compute under the lock, since another session may just have finished.
-        current = snapshot(root, config)
-        state = json.loads(path.read_text()) if path.exists() else {}
-        if state.get("version") != 3:
-            state = {"version": 3}
-        cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
-        message = preflight(root, config, current, state, metrics)
-        result = process(event, payload, root, config, current, state, cache, metrics)
-        result = add_preflight(event, result, message)
-        for target, value in ((path, state), (cache_path, cache)):
-            with tempfile.NamedTemporaryFile(
-                mode="w", dir=directory, delete=False
-            ) as f:
-                json.dump(value, f)
-            os.replace(f.name, target)
+        return process_locked(payload, metrics, root, config, path, cache_path)
+
+
+def process_locked(payload, metrics, root, config, path, cache_path):
+    event = payload["hook_event_name"]
+    # Compute under the lock, since another session may just have finished.
+    current = snapshot(root, config)
+    state = json.loads(path.read_text()) if path.exists() else {}
+    if state.get("version") != 3:
+        state = {"version": 3}
+    cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
+    message = preflight(root, config, current, state, metrics)
+    if event == "UserPromptSubmit" and config.get("verification", {}).get("review"):
+        work_review.begin(root, payload, state, path.with_suffix(".review"))
+    result = process(event, payload, root, config, current, state, cache, metrics)
+    if (
+        event == "Stop"
+        and config.get("verification", {}).get("review")
+        and metrics.get("outcome") in ("pass", "cached", "skipped", "manual_required")
+    ):
+        review, block = work_review.finish(root, config, state, path)
+        if snapshot(root, config) != current:
+            raise SnapshotChanged(
+                "Sources changed during review; rerun verification on the final files"
+            )
+        if review:
+            manual = result.get("systemMessage", "")
+            result = reply(event, review + ("\n" + manual if manual else ""), block)
+    result = add_preflight(event, result, message)
+    for target, value in ((path, state), (cache_path, cache)):
+        work_review.save(target, value)
     return result
 
 
@@ -222,6 +244,8 @@ def measured_check(root, config, stage, state, current, cache, metrics):
 
 
 def log_outcome(payload, metrics, started):
+    if metrics.get("outcome") == "not_enabled":
+        return
     if not isinstance(payload, dict) or not payload.get("cwd"):
         return
     try:

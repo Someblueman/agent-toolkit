@@ -4,7 +4,7 @@ import argparse
 import subprocess
 from pathlib import Path
 
-from .codex_hooks import install_codex, plan_codex
+from .codex_hooks import install_codex, plan_codex, uninstall_global
 from .config import SetupError, SnapshotChanged, find_root, load
 from .profiles import PINS
 from .runner import check, doctor
@@ -27,7 +27,7 @@ def main():
     setup.add_argument(
         "--codex",
         action="store_true",
-        help="Also register hooks, reusing matching user hooks",
+        help="Opt this repository into local lifecycle hooks",
     )
     sub.add_parser(
         "doctor", help="Check tools, versions and source coverage without installing"
@@ -40,12 +40,11 @@ def main():
         "install-codex", help="Merge project-local Codex hooks; preserve other hooks"
     )
     install.add_argument("--dry-run", action="store_true")
-    install.add_argument(
-        "--global",
-        dest="user",
-        action="store_true",
-        help="Register project setup and verification hooks once in CODEX_HOME",
+    uninstall = sub.add_parser(
+        "uninstall-codex", help="Remove former global quality registration"
     )
+    uninstall.add_argument("--global", action="store_true", required=True)
+    uninstall.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     try:
         root = args.root.resolve()
@@ -57,10 +56,10 @@ def main():
             if args.codex:
                 install_codex(root, toolkit, args.dry_run)
         elif args.command == "install-codex":
-            if not args.user:
-                root = find_root(root)
-                load(root)
-            install_codex(root, toolkit, args.dry_run, args.user)
+            root = find_root(root, require_config=False)
+            install_codex(root, toolkit, args.dry_run)
+        elif args.command == "uninstall-codex":
+            uninstall_global(toolkit, args.dry_run)
         else:
             root = find_root(root)
             config = load(root)

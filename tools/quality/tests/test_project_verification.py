@@ -7,11 +7,15 @@ from support import Repository
 
 
 class ProjectVerification(Repository):
-    def test_unconfigured_git_project_gets_setup_first_without_writes(self):
+    def test_only_explicitly_registered_git_project_gets_setup_prompt(self):
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        self.assertEqual(self.hook("UserPromptSubmit"), {})
+        self.assertEqual(self.hook("Stop"), {})
+        self.assertFalse((self.root / "state").exists())
+        self.assertEqual(self.cli("install-codex").returncode, 0)
         files = sorted(str(p.relative_to(self.root)) for p in self.root.rglob("*"))
         result = self.hook("UserPromptSubmit", cwd=str(self.root / "src"))
-        message = result["systemMessage"]
+        message = result["hookSpecificOutput"]["additionalContext"]
         self.assertIn(str(self.root.resolve()), message)
         self.assertIn("first task", message)
         self.assertIn("verification.green", message)
@@ -34,9 +38,16 @@ class ProjectVerification(Repository):
         nested = self.root / "src/nested"
         nested.mkdir()
         subprocess.run(["git", "init", "-q", str(nested)], check=True)
+        self.assertEqual(self.hook("UserPromptSubmit", cwd=str(nested)), {})
+        self.assertEqual(self.cli("--root", str(nested), "install-codex").returncode, 0)
         result = self.hook("UserPromptSubmit", cwd=str(nested))
-        self.assertIn(str(nested.resolve()), result["systemMessage"])
-        self.assertIn("Project verification setup required", result["systemMessage"])
+        self.assertIn(
+            str(nested.resolve()), result["hookSpecificOutput"]["additionalContext"]
+        )
+        self.assertIn(
+            "Project verification setup required",
+            result["hookSpecificOutput"]["additionalContext"],
+        )
 
     def test_existing_config_needs_definition_but_still_supports_tooling(self):
         config = self.config()
@@ -45,7 +56,7 @@ class ProjectVerification(Repository):
         original = (self.root / "quality.json").read_bytes()
         self.assertIn(
             "Project verification setup required",
-            self.hook("UserPromptSubmit")["systemMessage"],
+            self.hook("UserPromptSubmit")["hookSpecificOutput"]["additionalContext"],
         )
         self.assertEqual(self.hook("Stop")["decision"], "block")
         self.assertEqual(self.cli("doctor").returncode, 0)
@@ -57,7 +68,8 @@ class ProjectVerification(Repository):
         }
         self.write_config(config)
         self.assertIn(
-            "Fixture lint is sufficient", self.hook("UserPromptSubmit")["systemMessage"]
+            "Fixture lint is sufficient",
+            self.hook("UserPromptSubmit")["hookSpecificOutput"]["additionalContext"],
         )
         self.assertEqual(self.hook("Stop", stop_hook_active=True), {})
 
@@ -68,6 +80,7 @@ class ProjectVerification(Repository):
             {},
             {"green": " ", "manual": []},
             {"green": "ok", "manual": [""]},
+            {"green": "ok", "manual": [], "review": "yes"},
         ):
             with self.subTest(value=value):
                 config["verification"] = value
@@ -90,7 +103,9 @@ class ProjectVerification(Repository):
             ],
         }
         self.write_config(config)
-        prompt = self.hook("UserPromptSubmit")["systemMessage"]
+        prompt = self.hook("UserPromptSubmit")["hookSpecificOutput"][
+            "additionalContext"
+        ]
         self.assertIn("changed controls", prompt)
         result = self.hook("Stop")
         self.assertIn("Overall green still requires", result["systemMessage"])
@@ -113,6 +128,7 @@ class ProjectVerification(Repository):
     def test_removing_configuration_cannot_bypass_stop(self):
         subprocess.run(["git", "init", "-q", str(self.root)], check=True)
         self.config()
+        self.assertEqual(self.cli("install-codex").returncode, 0)
         self.hook("UserPromptSubmit")
         (self.root / "quality.json").unlink()
         self.assertEqual(self.hook("Stop")["decision"], "block")
