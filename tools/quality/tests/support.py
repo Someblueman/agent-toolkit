@@ -35,6 +35,10 @@ class Repository(unittest.TestCase):
 
     def config(self, body="raise SystemExit(0)"):
         config = build(self.root, "python", roots=["src"])
+        config["verification"] = {
+            "green": "The fixture's declared check passes.",
+            "manual": [],
+        }
         script = self.root / "linter.py"
         script.write_text(
             "import sys\nif '--version' in sys.argv:\n print('lint 1.0.0')\nelse:\n "
@@ -56,12 +60,12 @@ class Repository(unittest.TestCase):
         (self.root / "quality.json").write_text(json.dumps(config))
 
     def hook(self, event, **fields):
-        payload = dict(
-            cwd=str(self.root),
-            session_id="test-session",
-            hook_event_name=event,
+        payload = {
+            "cwd": str(self.root),
+            "session_id": "test-session",
+            "hook_event_name": event,
             **fields,
-        )
+        }
         result = subprocess.run(
             [sys.executable, str(HOOK)],
             input=json.dumps(payload),

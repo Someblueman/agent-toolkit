@@ -22,6 +22,12 @@ class NativeTests(Repository):
     @unittest.skipUnless("python" in ENABLED, "set QUALITY_NATIVE=python")
     def test_python_real_complexity_and_hook(self):
         self.setup_profile("python", "app.py", "value = 1\n")
+        config = json.loads((self.root / "quality.json").read_text())
+        config["verification"] = {
+            "green": "This native-tool fixture meets its lint and complexity rules.",
+            "manual": [],
+        }
+        self.write_config(config)
         self.assertEqual(self.cli("check").returncode, 0)
         self.hook("UserPromptSubmit")
         for branches, expected in ((9, 0), (10, 1)):

@@ -157,6 +157,7 @@ def snapshot(root, config, include_manual=False):
                     config["roots"],
                     config["exclude"],
                     config["size"],
+                    config.get("verification"),
                     tools,
                 ]
             ),

@@ -21,13 +21,15 @@ leader completion behavior. Historical examples and other skill helpers are not 
 covered. Ruff is installed under the ignored `.quality/` directory; Python 3.13.2 is
 externally managed for tests. `setup --codex` also registers the shared Codex hooks.
 
-With the hooks active, the first prompt checks tool availability and reports the
-declared verification coverage. Relevant edits run Ruff and the installer tests,
+With the hooks active, the first prompt checks project verification setup, tool availability
+and declared checks. Relevant edits run Ruff and the installer tests,
 including installation of the current packages into a temporary destination. Stop
-also runs the quality and leader completion suites when their inputs changed.
+verifies all automated checks, including the quality and leader completion suites,
+with successful results reusable only for identical declared inputs and full selection.
 Agents do not have to issue test commands to receive these results.
 
-For another repository, select its existing language tools explicitly:
+For another repository, first establish its definition of green as described below.
+When a language starter is useful, select its existing tools explicitly:
 
 ```sh
 /path/to/agent-toolkit/tools/quality/bin/quality --root /path/to/project setup \
@@ -56,6 +58,43 @@ Keep each repository's native test/build commands and dependency inputs in its o
 `quality.json`. Do not copy the toolkit's configuration, which tests the toolkit itself.
 The shared runner has no dependency on the target repository's language or layout;
 the current lifecycle adapter targets Codex on macOS/Linux.
+
+## Define green for the project
+
+`UserPromptSubmit` looks for the current project's configuration, stopping at the nearest
+Git boundary. A nested repository cannot inherit its parent's verification policy.
+If `quality.json` or its `verification` section is missing, the hook makes setup the first
+implementation task. It directs the agent to read that repository's instructions,
+development docs, CI and native commands, then record useful acceptance criteria and
+run the selected checks to establish a baseline. Read-only requests report missing setup
+without authorizing project changes. Outside Git, an explicit `quality.json` identifies
+the project; ordinary folders without either remain unaffected.
+
+Add this section to the repository's existing version-1 configuration, alongside the
+native commands in `checks`. For example, a game might define:
+
+```json
+"verification": {
+  "green": "The game builds, existing gameplay regressions pass, and changed controls work in the browser.",
+  "manual": ["For gameplay or visual changes, play the affected flow and record the result."]
+}
+```
+
+`green` describes concrete project acceptance criteria. `manual` lists relevant evidence
+that cannot be established by an automated command; use an empty list if none is needed.
+The agent/reviewer reports that evidence, justified non-applicability, or unresolved
+limitations. The hook cannot certify visual quality or the relevance of a test from an
+exit code. Manual-stage commands are also listed as outstanding evidence at Stop.
+
+There is no requirement for a new test, a test count, or a coverage percentage. Use
+existing useful tests, builds, type checks, native CLI/browser workflows and proportionate
+inspection. Add a test when it catches a plausible failure of the actual change.
+Do not weaken existing acceptance checks to make the result green. Starter profiles
+only provision language tooling; they deliberately do not generate acceptance claims.
+
+Existing configurations without `verification` still support setup, doctor and explicit
+checks. Lifecycle verification reports setup incomplete until the project definition is
+present. Hooks do not create the definition, install tools or change repository files.
 
 ## What setup provisions
 
@@ -92,6 +131,8 @@ project manifest and lockfile. Inspect the setup dry-run first.
 
 `quality.json` is a trusted executable configuration, version 1:
 
+- `verification`: `green` acceptance description and `manual` evidence descriptions.
+  Required for lifecycle verification; absent in unconfigured language starters.
 - `roots`: explicit files/directories, relative to the repository root.
 - `exclude`: repository-relative glob patterns. No blanket exclusion of `packages/`.
 - `tools`: executable argument prefix, exact reported version, version arguments and
@@ -169,7 +210,7 @@ test. The real-tool boundary tests below provide that additional evidence.
 ```sh
 quality --root /path/to/project install-codex --dry-run
 quality --root /path/to/project install-codex
-# Optional: register once for every repository that opts in with quality.json.
+# Optional: register project setup and verification hooks once for all repositories.
 quality install-codex --global --dry-run
 quality install-codex --global
 ```
@@ -189,7 +230,8 @@ does not establish runtime activation: review the configured sources in Codex `/
 Keep one enabled registration for each event. This follows the
 [Codex registration and trust contract](https://learn.chatgpt.com/docs/hooks).
 
-- `UserPromptSubmit` performs preflight on the first prompt in a session and after
+- `UserPromptSubmit` checks for project-specific verification setup first, then performs
+  preflight on the first prompt in a session and after
   quality configuration, source inventory, checker or tool changes. All tools required by automated
   checks must be available, including tools for currently untouched languages.
   Successful preflight is reused while those inputs remain unchanged. It does not
@@ -198,20 +240,23 @@ Keep one enabled registration for each event. This follows the
   preserve edits that are still awaiting completion checks.
 - `PostToolUse` checks the source inventory after Bash/patch events when content changed,
   using fast checks. Identical content isn't checked repeatedly.
-- `Stop` runs the affected fast and full checks when inputs changed. A violation asks
+- `Stop` verifies all configured fast and full checks across the full inventory.
+  The initial prompt snapshot is not evidence of passing checks. Valid successful
+  results for identical inputs and full selections may be reused. A violation asks
   Codex to continue once. Persistent failure remains unresolved and is reported without
   an endless repair loop; it never becomes a successful baseline.
 - Missing tools, invalid configuration, timeouts, busy locks and changing snapshots
   cannot pass completion. Stop requests one retry; `stop_hook_active` continuations
   report a blocker if checking still cannot finish. Post-tool events report the issue
   for the next eligible event. There is no automatic installation.
-- Read-only turns perform preflight but do not run checks when inputs are unchanged.
-  Pre-existing violations are not
+- Read-only turns can establish the first verified baseline at Stop. Later unchanged
+  events reuse valid results. Pre-existing violations are not
   automatically grandfathered; feedback explicitly limits repairs to authorized scope.
 
 The adapter uses per-session state under `~/.cache/agent-toolkit/quality` (override with
 `QUALITY_HOOK_STATE_DIR` for tests). This is a cache, not an acceptance certificate. Hooks
-outside a repository containing `quality.json` are inert. The final check reconciles
+outside Git or a directory containing `quality.json` are inert. Missing setup in a
+Git repository prompts onboarding and reports incomplete verification at Stop. The final check reconciles
 the configured inventory, so shell edits do not have to be inferred from command text.
 
 Codex requires review/trust of new or changed hooks; installation does not establish it.
@@ -237,7 +282,7 @@ read-only turns, missing tools, retry bounds, repair, idempotence and existing-h
 
 ### Local outcome log
 
-Opted-in repositories append one JSON record per hook invocation under
+Recognized projects append one JSON record per hook invocation under
 `~/.cache/agent-toolkit/quality/<sha256-of-repository-path>.jsonl` (or
 `QUALITY_HOOK_STATE_DIR`). Records contain UTC time, event, hashed session ID,
 duration in milliseconds, checked/skipped status, pass/fail/cached/setup-error outcome,
@@ -248,6 +293,8 @@ checked outcomes separately from skipped events, and exclude deliberate trials
 when assessing organic catches and repair rates. `cached` means a previous successful
 result was reused for identical selected inputs; `skipped` establishes no new result.
 The `preflight` flag records successful availability checks separately from executed tests.
+`setup_required` means the project definition is missing; `manual_required` means
+automated verification cannot establish the remaining declared manual criteria.
 
 ### Reporting and concurrent edits
 
@@ -268,13 +315,15 @@ still report `setup_error`.
 
 ### Incremental lifecycle checks and worktrees
 
-Hooks compare content against the turn baseline and pass only changed files to
+Post-tool hooks compare content against the turn baseline and pass only changed files to
 file-based checks. This covers Ruff, Biome, ESLint, ShellCheck and HLint. New and
 untracked sources are included. Deletions and changes to native configuration,
 lockfiles, checker commands or quality policy invalidate the affected scope.
-Successful results can be reused at Stop; failed results are never cached as passes.
+Stop selects every configured source for every automated check, including unchanged
+components. Successful full-selection results can be reused at Stop; a cached pass
+on a subset cannot certify a larger selection. Failed results are never cached as passes.
 Explicit `quality check` always checks the full configured inventory without this cache.
-A quiet hook means no new findings in the selected scope, not whole-project acceptance.
+A quiet hook is not proof of meeting every product requirement or manual criterion.
 
 Optional check fields in version 1:
 

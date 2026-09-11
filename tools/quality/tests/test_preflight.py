@@ -54,7 +54,7 @@ class PreflightTests(Repository):
         self.assertIn("manual (excluded from hooks): manual acceptance (test)", result)
         self.assertIn("No automated behavioral check declared", result)
         self.source.write_text("value = 2\n")
-        self.assertEqual(self.hook("Stop"), {})
+        self.assertIn("manual acceptance", self.hook("Stop")["systemMessage"])
         self.assertEqual(self.cli("doctor").returncode, 2)
 
     def test_invalid_configuration_blocks_completion_once(self):

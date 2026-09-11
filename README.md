@@ -40,8 +40,10 @@ See [docs/contributing.md](docs/contributing.md) for the full rules.
 ## Local quality checks
 
 The [quality tool](tools/quality/) provisions pinned native linters and runs repository
-checks through Codex lifecycle hooks. Once configured, prompts check prerequisites,
-relevant edits run fast checks, and Stop runs the affected acceptance suites. This
+checks through Codex lifecycle hooks. Prompts identify missing project verification
+setup and direct the agent to establish what green means for that repository first.
+Once configured, relevant edits run fast checks and Stop verifies the entire declared
+automated inventory, reusing successful results only for identical inputs. This
 repository includes installer, quality-hook and leader completion tests. Start setup
 with `tools/quality/bin/quality setup --dry-run`; `doctor` and `check` remain available
 for diagnosis and reruns. Hook registration uses `install-codex`; retain an existing

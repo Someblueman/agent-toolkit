@@ -4,12 +4,12 @@ from support import Repository
 
 
 class HookTests(Repository):
-    def test_read_only_turn_only_runs_preflight(self):
+    def test_unverified_initial_snapshot_is_checked_at_stop(self):
         self.config("raise SystemExit(1)")
         self.assertIn(
-            "Quality preflight", self.hook("UserPromptSubmit")["systemMessage"]
+            "Verification preflight", self.hook("UserPromptSubmit")["systemMessage"]
         )
-        self.assertEqual(self.hook("Stop"), {})
+        self.assertEqual(self.hook("Stop")["decision"], "block")
 
     def test_failure_continues_once_then_reports(self):
         self.config("raise SystemExit(1)")
@@ -48,7 +48,8 @@ class HookTests(Repository):
         self.assertNotIn("decision", result)
         self.assertIn("report the blocker", result["systemMessage"])
 
-    def test_no_config_is_inert(self):
+    def test_ordinary_folder_without_git_or_config_is_inert(self):
+        self.assertEqual(self.hook("UserPromptSubmit"), {})
         self.assertEqual(self.hook("Stop"), {})
 
     def test_install_preserves_hooks_and_is_idempotent(self):

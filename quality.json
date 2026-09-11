@@ -1,5 +1,9 @@
 {
   "version": 1,
+  "verification": {
+    "green": "The shared quality runner, lifecycle hooks, installers and leader completion behavior pass their native regression suites; covered Python sources pass Ruff lint, complexity and formatting checks. Optional native profiles are reported separately when their toolchains are available.",
+    "manual": []
+  },
   "roots": [
     "tools/quality",
     "hooks/session/quality_hook.py",

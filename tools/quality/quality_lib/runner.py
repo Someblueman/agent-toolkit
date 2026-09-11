@@ -87,6 +87,17 @@ def doctor(root, config, *, automated=False):
 def coverage(root, config):
     files = inventory(root, config)
     messages = [f"Configured source inventory: {len(files)} files"]
+    if "verification" in config:
+        messages.append("Repository green: " + config["verification"]["green"])
+        messages.extend(
+            "Manual evidence: " + item for item in manual_requirements(config)
+        )
+    else:
+        messages.append(
+            "Project verification setup required: define verification.green and "
+            "verification.manual in quality.json using this repository's acceptance criteria. "
+            "Language profiles alone do not define green."
+        )
     for stage in ("fast", "full", "manual"):
         names = [
             f"{c['name']} ({c.get('kind', 'unspecified')})"
@@ -109,6 +120,12 @@ def coverage(root, config):
             + ". Configure kind=test/invariant and its actual inputs; this is not test coverage."
         )
     return messages
+
+
+def manual_requirements(config):
+    return config.get("verification", {}).get("manual", []) + [
+        c["name"] for c in config["checks"] if c["stage"] == "manual"
+    ]
 
 
 def verify_tool(root, name, tool):

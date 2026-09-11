@@ -4,6 +4,8 @@ import fcntl
 import hashlib
 import json
 import os
+import shlex
+import sys
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -16,7 +18,7 @@ from quality_lib.config import (
     load,
 )
 from quality_lib.incremental import digest, evaluate, snapshot
-from quality_lib.runner import doctor
+from quality_lib.runner import doctor, manual_requirements
 
 
 def reply(event, text, block=False):
@@ -34,10 +36,40 @@ def unverified(payload, text):
     block = event == "Stop" and not payload.get("stop_hook_active")
     if event == "Stop":
         text += (
-            "\nCompletion is unverified. Retry once when ready; if verification cannot "
+            "\nRepository verification is incomplete. Retry once when ready; if verification cannot "
             "finish, report the blocker without claiming successful acceptance."
         )
     return reply(event, text, block)
+
+
+def setup_required(payload, root, metrics):
+    metrics["outcome"] = "setup_required"
+    command = shlex.join(
+        [
+            sys.executable,
+            str(Path(__file__).resolve().parents[2] / "tools/quality/bin/quality"),
+            "--root",
+            str(root),
+            "setup",
+            "--codex",
+        ]
+    )
+    return unverified(
+        payload,
+        f"Project verification setup required for {root}.\n"
+        "Before implementation, make defining this repository's green state the first task: "
+        "read its AGENTS.md, development docs, CI and native test/build commands. "
+        "Create or complete quality.json with verification.green (concrete acceptance criteria), "
+        "verification.manual (relevant evidence that needs judgment), and the existing useful "
+        "automated checks with their source/dependency inputs. Run the selected checks to "
+        "establish the baseline; report existing failures and unavailable checks. "
+        "Do not add tests, test counts or coverage targets just to satisfy this setup. "
+        "Use proportionate evidence for the requested change; ask only when the repository "
+        "does not resolve a material acceptance decision. For read-only requests, report "
+        "missing setup without modifying the project.\n"
+        f"After defining the configuration, provision/register with: {command}\n"
+        "Language profiles are tooling starters, not a definition of green.",
+    )
 
 
 def preflight(root, config, current, state, metrics):
@@ -55,8 +87,9 @@ def preflight(root, config, current, state, metrics):
     messages = doctor(root, config, automated=True)
     state["preflight"] = key
     metrics["preflight"] = True
-    return "Quality preflight (tool availability and declared checks):\n" + "\n".join(
-        messages
+    return (
+        "Verification preflight (repository criteria and tool availability):\n"
+        + "\n".join(messages)
     )
 
 
@@ -77,10 +110,14 @@ def handle(payload, metrics):
     if event not in ("UserPromptSubmit", "PostToolUse", "Stop"):
         return {}
     try:
-        root = find_root(payload["cwd"])
+        root = find_root(payload["cwd"], require_config=False)
     except SetupError:
-        return {}  # Global installation is inert outside opted-in repositories.
+        return {}  # No Git repository or explicit project configuration.
+    if not (root / "quality.json").is_file():
+        return {} if event == "PostToolUse" else setup_required(payload, root, metrics)
     config = load(root)
+    if "verification" not in config and event != "PostToolUse":
+        return setup_required(payload, root, metrics)
     session = payload.get("session_id")
     if not isinstance(session, str) or not session:
         raise SetupError("Missing hook session_id")
@@ -128,10 +165,10 @@ def process(event, payload, root, config, current, state, cache, metrics):
         # A steering prompt must not erase edits still awaiting completion checks.
         state.setdefault("baseline", current)
         return {}
-    if current == state.get("baseline"):
-        return {}
     if event == "PostToolUse":
-        if digest(current) == state.get("fast_checked"):
+        if current == state.get("baseline") or digest(current) == state.get(
+            "fast_checked"
+        ):
             return {}
         code, output = measured_check(
             root, config, "fast", state, current, cache, metrics
@@ -143,17 +180,33 @@ def process(event, payload, root, config, current, state, cache, metrics):
         state["baseline"] = current
         state.pop("pending", None)
         state.pop("fast_checked", None)
+        manual = manual_requirements(config)
+        if manual:
+            metrics["outcome"] = "manual_required"
+            automatic = any(c["stage"] != "manual" for c in config["checks"])
+            return reply(
+                event,
+                (
+                    "Automated repository checks passed or have valid cached results. "
+                    if automatic
+                    else "Automated repository checks: none configured. "
+                )
+                + "Overall green still requires relevant manual evidence:\n- "
+                + "\n- ".join(manual)
+                + "\nReport the evidence, justified non-applicability, or unresolved limitations. "
+                "The hook has not verified these criteria.",
+            )
         return {}
     if payload.get("stop_hook_active") or state.get("pending"):
         return reply(
             event,
-            "Quality checks still fail. Report this unresolved result; do not claim a pass.\n"
+            "Repository verification checks still fail. Report this unresolved result; do not claim a pass.\n"
             + output,
         )
     state["pending"] = True
     return reply(
         event,
-        "Quality checks found violations. Fix only defects within the authorized task; "
+        "Repository verification failed. Fix only defects within the authorized task; "
         "report pre-existing findings or setup blockers without expanding scope.\n"
         + output,
         True,
@@ -162,16 +215,17 @@ def process(event, payload, root, config, current, state, cache, metrics):
 
 def measured_check(root, config, stage, state, current, cache, metrics):
     metrics["stage"] = stage
-    return evaluate(
-        root, config, state.get("baseline", {}), current, cache, stage, metrics
-    )
+    # Stop verifies every automated check, including unchanged parts of the repository.
+    # A source snapshot taken at prompt time is not evidence that those checks passed.
+    baseline = {} if stage == "full" else state.get("baseline", {})
+    return evaluate(root, config, baseline, current, cache, stage, metrics)
 
 
 def log_outcome(payload, metrics, started):
     if not isinstance(payload, dict) or not payload.get("cwd"):
         return
     try:
-        root = find_root(payload["cwd"])
+        root = find_root(payload["cwd"], require_config=False)
         directory = Path(
             os.environ.get(
                 "QUALITY_HOOK_STATE_DIR",

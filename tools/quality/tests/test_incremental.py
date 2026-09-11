@@ -53,7 +53,7 @@ class IncrementalTests(Repository):
             snapshot(self.root.resolve(), config)[name]["policy"],
         )
 
-    def test_only_changed_file_runs_and_stop_reuses_success(self):
+    def test_fast_selects_changed_file_but_stop_verifies_whole_inventory(self):
         self.config(
             "from pathlib import Path; Path('calls').open('a').write(repr(sys.argv[1:]) + '\\n')"
         )
@@ -63,7 +63,12 @@ class IncrementalTests(Repository):
         self.source.write_text("value = 2\n")
         self.hook("PostToolUse")
         self.assertEqual(self.hook("Stop"), {})
-        self.assertEqual((self.root / "calls").read_text(), "['./src/example.py']\n")
+        self.assertEqual(
+            (self.root / "calls").read_text().splitlines(),
+            ["['./src/example.py']", "['./src/example.py', './src/other.py']"],
+        )
+        # Only the full successful selection can certify the full inventory.
+        self.assertEqual(self.hook("Stop"), {})
         records = [
             json.loads(line)
             for line in next((self.root / "state").glob("*.jsonl"))
@@ -76,7 +81,8 @@ class IncrementalTests(Repository):
         other.write_text("other = 2\n")
         self.hook("Stop")
         self.assertEqual(
-            (self.root / "calls").read_text().splitlines()[-1], "['./src/other.py']"
+            (self.root / "calls").read_text().splitlines()[-1],
+            "['./src/example.py', './src/other.py']",
         )
 
     def test_new_deleted_and_config_files_recheck(self):
@@ -88,7 +94,8 @@ class IncrementalTests(Repository):
         other.write_text("other = 1\n")
         self.hook("Stop")
         self.assertEqual(
-            (self.root / "calls").read_text().splitlines()[-1], "['./src/other.py']"
+            (self.root / "calls").read_text().splitlines()[-1],
+            "['./src/example.py', './src/other.py']",
         )
         self.hook("UserPromptSubmit")
         other.unlink()
@@ -117,7 +124,7 @@ class IncrementalTests(Repository):
         )
         self.hook("UserPromptSubmit")
         self.source.write_text("value = 2\n")
-        self.assertEqual(self.hook("Stop"), {})
+        self.assertIn("slow analysis", self.hook("Stop")["systemMessage"])
         self.assertEqual(self.cli("check").returncode, 1)
 
     def test_preflight_requires_all_automated_tools(self):

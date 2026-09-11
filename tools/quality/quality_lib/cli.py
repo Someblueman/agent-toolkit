@@ -44,7 +44,7 @@ def main():
         "--global",
         dest="user",
         action="store_true",
-        help="Register once in CODEX_HOME for all opted-in repositories",
+        help="Register project setup and verification hooks once in CODEX_HOME",
     )
     args = parser.parse_args()
     try:

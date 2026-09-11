@@ -96,6 +96,14 @@ class BehavioralHooks(Repository):
         self.assertIn("FAIL full behavior", result["reason"])
         self.assertEqual((self.root / "executions").read_text(), "fast\nfull\n")
 
+    def test_initial_snapshot_does_not_hide_existing_test_failures(self):
+        self.program(detail="broken before the prompt")
+        self.hook("UserPromptSubmit")
+        result = self.hook("Stop")
+        self.assertEqual(result["decision"], "block")
+        self.assertIn("FAIL full behavior", result["reason"])
+        self.assertIn("AssertionError", result["reason"])
+
     def test_dependency_and_test_edits_invalidate_cached_results(self):
         self.hook("UserPromptSubmit")
         self.program(ready="updated")

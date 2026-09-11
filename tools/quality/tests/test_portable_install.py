@@ -47,6 +47,10 @@ class PortableInstall(unittest.TestCase):
         )
         config = {
             "version": 1,
+            "verification": {
+                "green": "The application prints the expected output.",
+                "manual": [],
+            },
             "roots": ["src"],
             "exclude": [],
             "tools": {

@@ -46,7 +46,8 @@ for a repository with its own `quality.json`. This provisions its selected tools
 registers hooks, reusing matching user-level JSON handlers. For first-time setup, select
 the repository's language profiles and source roots as described in the quality guide.
 
-`tools/quality/bin/quality install-codex --global` registers once in `CODEX_HOME` for all
-opted-in repositories. Review/trust the definitions in Codex `/hooks`; installation
-preserves trust and enablement settings. The shared checker remains inert without a
-repository-owned `quality.json`.
+`tools/quality/bin/quality install-codex --global` registers project setup and verification
+hooks once in `CODEX_HOME`. Review/trust the definitions in Codex `/hooks`; installation
+preserves trust and enablement settings. In a Git repository without a complete
+`quality.json`, the prompt hook directs the agent to define that project's verification
+criteria first. It does not install tools or modify projects during hook execution.

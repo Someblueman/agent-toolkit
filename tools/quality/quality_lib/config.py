@@ -14,14 +14,18 @@ class SnapshotChanged(SetupError):
     """Concurrent edits invalidated a check; tooling may be healthy."""
 
 
-def find_root(start):
+def find_root(start, require_config=True):
     start = Path(start).resolve()
     for root in (start, *start.parents):
         if (root / "quality.json").is_file():
             return root
         if (root / ".git").exists():
+            if not require_config:
+                return root
             break
-    raise SetupError("No quality.json; run quality setup --profile <language> first")
+    raise SetupError(
+        "No quality.json; define this project's verification criteria and native checks first"
+    )
 
 
 def argv(value):
@@ -56,7 +60,11 @@ def load(root):
 
 def validate(data):
     allowed = {"version", "roots", "exclude", "tools", "checks", "size"}
-    if not isinstance(data, dict) or set(data) != allowed or data["version"] != 1:
+    if (
+        not isinstance(data, dict)
+        or set(data) - {"verification"} != allowed
+        or data["version"] != 1
+    ):
         raise SetupError(
             "Expected version 1 and roots/exclude/tools/checks/size fields"
         )
@@ -77,6 +85,20 @@ def validate(data):
         raise SetupError("size requires integer limit and mode")
     if size["limit"] < 1 or size["mode"] not in ("review", "error"):
         raise SetupError("Invalid size policy")
+    if "verification" in data:
+        validate_verification(data["verification"])
+
+
+def validate_verification(verification):
+    if not isinstance(verification, dict) or set(verification) != {"green", "manual"}:
+        raise SetupError("verification requires green and manual fields")
+    if not isinstance(verification["green"], str) or not verification["green"].strip():
+        raise SetupError(
+            "verification.green must describe the repository's acceptance criteria"
+        )
+    strings(verification["manual"], "verification.manual")
+    if any(not item.strip() for item in verification["manual"]):
+        raise SetupError("Manual verification descriptions must not be blank")
 
 
 def validate_tool(tool):
