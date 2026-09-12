@@ -1,7 +1,10 @@
 # Team leader delivery repair
 
-Status: proposed, 12 September 2026. Investigation and this document are authorized;
-implementation, installation, and changes to the running Hydra leader are not.
+Status: implemented and locally verified, 12 September 2026. The user authorized both
+repairs. Stages 1–3 are complete; the installed team-leader package matches the canonical
+source. The live delivery trial in stage 4 remains unperformed. Quality hooks remain disabled in agent-toolkit and Hydra; their configuration
+files are restored now that cached, unregistered hook invocations are inert. No live
+Hydra assignment, roster or heartbeat is changed by this source repair.
 
 ## Outcome and scope
 
@@ -16,8 +19,9 @@ Keep both usable across repositories. Hydra is the observed delegation failure c
 possible later acceptance trial, not a dependency.
 
 The user clarified the intended model: recurring app tasks together with native subagents.
-That hybrid is confirmed intent. The routing and ownership rules below are proposed ways
-to implement it; they have not yet been approved for execution.
+That hybrid and implementation of the repair are now authorized. The routing and ownership
+rules below keep recurring tasks responsible for their workstreams and specialists scoped
+to bounded jobs.
 
 Preserve the current orchestration-only leader role, independent review, repository
 acceptance requirements, publication boundaries, and default four-hour recovery window.
@@ -121,7 +125,7 @@ There is a separate stale-ownership risk: two old Hydra rosters retain the same
 owner. Any future heartbeat mutation must verify actual ownership rather than trusting an
 old roster ID. This is not evidence that either old task caused the reported stall.
 
-## Proposed repair
+## Repair design
 
 ### 1. Establish one current delivery contract
 
@@ -261,10 +265,10 @@ review; do not silently disable it to make the task appear finished.
 
 The Stop hook should validate the recorded result for the relevant work interval and
 current source snapshot. When `verification.review` is true, missing, failed, interrupted,
-unavailable, or stale review must promptly return `decision: block` and keep acceptance
-unsatisfied. The agent may perform the visible review stage or report an incomplete handoff
-under the existing cancellation and recovery bounds; neither silence nor exhausted retries
-converts the missing review into success. Do not spawn a model reviewer, wait on
+unavailable, or stale review must keep acceptance unsatisfied. Stop returns `decision: block`
+once for the same files and request; further stops explicitly report incomplete review
+without accepting it or requesting another automatic continuation. Neither exhausted retries
+nor an incomplete handoff converts the missing review into success. Do not spawn a model reviewer, wait on
 network/model work, or start a repeated review loop from Stop. Preserve
 the existing distinction between completed, failed, unavailable, interrupted, and stale
 evidence; an interrupted attempt must never count as a pass. Reuse applicable review
@@ -273,8 +277,9 @@ evidence instead of launching a second hidden reviewer for work already covered.
 Run the visible review with normal progress reporting and cancellation. Verify that app
 interruption stops its owned process tree and releases any lock. Do not hold the shared
 checkout check lock while waiting for a model; snapshot before review and revalidate after
-it, with session-owned review state. Keep one attempt per work interval and prevent an old
-review completion from overwriting a newer interval after the user resends a message.
+it, with session-owned review state. Reuse an unchanged completed report; repeat visible review only after meaningful source
+or requirement changes or an explicitly handled failure. Prevent an old review completion
+from overwriting a newer interval after the user resends a message.
 Reuse the existing scoped trees and review bookkeeping rather than introducing a scheduler.
 
 For diagnosis, distinguish viewing another task's automation card from scheduling or
@@ -282,6 +287,35 @@ delivering its heartbeat. Prefer an inspection route that does not add an automa
 to an unrelated chat, or explain the card before displaying it. Check the actual automation
 target before changing its status; an inherited prompt or stale roster is not ownership.
 Recurring worker tasks do not acquire the leader's recovery settings from copied context.
+
+
+## Implemented hook repair
+
+`quality review` now runs the existing scoped Luna/max review visibly before completion.
+`quality review --accept 'assessment'` records the parent's assessment of a current report.
+Stop never starts a reviewer; it requires a current completed report and assessment.
+Changed files, changed requirements, missing reports and interrupted attempts cannot be
+silently accepted. Later status-only messages can reuse a completed report through an
+explicit `--same-scope` assessment, preserving its actual reviewed request revision.
+The hook checks registration for its own event even when `quality.json` exists. Removing
+Stop therefore takes effect for cached invocations without disabling other registered events.
+Incomplete review gets at most one continuation and remains explicitly unaccepted afterward.
+The reviewer holds only its session lock while running. A pipe-bound supervisor kills its
+process tree, including children in separate sessions, on cancellation, caller death or timeout.
+
+Final local qualification passed `tools/quality/bin/quality check`: Ruff lint/complexity
+and format, 86 quality tests (9 optional native qualifications skipped), 8 installer tests,
+and 10 leader completion tests. The installer tests include temporary and repeat package
+installation. Skill validation and anti-bloat checks passed; the live Codex installer
+refresh changed only team-leader, and its read-only comparison reports every item unchanged.
+
+Real CLI/hook subprocess tests cover event-specific removal with configuration retained,
+SIGTERM/SIGINT/SIGKILL, child sessions, timeout cleanup, lock retention through cleanup,
+status-only report reuse, changed requirements, missing/failed/stale reports, explicit
+assessment and bounded incomplete Stop responses. No account-backed model review was
+launched for this qualification. Both live repositories retain disabled quality hooks and
+restored configuration. Actual app-button cancellation, scheduled heartbeat delivery and
+the broader recurring-task delivery trial remain separate, unperformed live checks.
 
 ## Work stages and acceptance
 
@@ -315,7 +349,8 @@ The delivery trial must show:
 - A plan-only completion does not launch hidden model work after the final answer. With
   configured native checks already cached, the Stop hook returns within a proposed
   two-second local allowance. For required review, each missing, failed, interrupted,
-  unavailable, or stale result returns `decision: block` and prevents verified completion.
+  unavailable, or stale result prevents verified completion; the first Stop requests one
+  continuation and later stops report the unmet requirement without a recursive loop.
   Review acceptance requires a current completed review with its valid blocking findings
   resolved; prompt hook return is not task acceptance. An explicitly incomplete handoff
   preserves the unmet requirement without starting a recursive review loop.
@@ -353,9 +388,11 @@ observed quality-review stall; heartbeat retargeting is not established by this 
 A working leader that directly
 implements remains an optional separate choice; the hybrid does not require that change.
 
-This plan is not approved for execution. Do not message the Hydra leader, change its roster
-or heartbeat, clean up its workers, edit its checkout, or install the proposed workflow from
-this planning request. No subagents were launched for the investigation.
+The user authorized source repairs for both quality hooks and the leader workflow. Refresh
+the installed canonical skill after its checks pass; preserve disabled quality registrations
+and the user's current Hydra work. Do not start a new delivery trial, dispatch live Hydra
+work, retarget recovery, or publish from this implementation request. No live model review
+or specialist dispatch is needed to repair the hook protocol and workflow instructions.
 
 Evidence locations for later verification:
 

@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 from quality_lib.review_scope import git
-from support import HOOK, Repository
+from support import CLI, HOOK, Repository
 
 
 @unittest.skipUnless(
@@ -17,7 +17,7 @@ from support import HOOK, Repository
     "set QUALITY_NATIVE=review; uses Codex account quota",
 )
 class NativeReview(Repository):
-    def test_native_luna_finds_regression_across_commits_once(self):
+    def test_native_luna_finds_regression_across_commits_visibly(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         state = Path(directory.name)
@@ -77,15 +77,26 @@ class NativeReview(Repository):
         )
         git(self.root, "add", "src/example.py")
         git(self.root, "commit", "-qm", "simplify average")
-        result = event("Stop")
-        self.assertEqual(result.get("decision"), "block", result)
-        self.assertIn("review completed", result["reason"])
-        self.assertRegex(result["reason"].lower(), "empty|zerodivision")
-        self.assertNotIn("preexisting.txt", result["reason"])
+        self.assertEqual(event("Stop").get("decision"), "block")
+        result = subprocess.run(
+            [sys.executable, str(CLI), "--root", str(self.root), "review"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=1000,
+            env=dict(
+                os.environ,
+                QUALITY_HOOK_STATE_DIR=str(state),
+                CODEX_THREAD_ID="native-review",
+            ),
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertRegex(result.stdout.lower(), "empty|zerodivision")
         artifacts = next(state.glob("*.review"))
         events = (artifacts / "events.jsonl").read_bytes()
+        self.assertIn("not accepted", str(event("Stop", stop_hook_active=True)))
         self.source.write_text(
             "def average(values):\n    return sum(values) / len(values) if values else 0\n"
         )
-        self.assertNotIn("decision", event("Stop", stop_hook_active=True))
+        self.assertIn("not accepted", str(event("Stop", stop_hook_active=True)))
         self.assertEqual((artifacts / "events.jsonl").read_bytes(), events)

@@ -1,6 +1,6 @@
 ---
 name: team-leader
-description: Lead project work with specialist subagents and separate Codex app tasks. Use when the user asks for a team leader or a single point of contact for delegated work; ordinary implementation and status questions do not authorize dispatch.
+description: Lead project work through recurring Codex app tasks and bounded specialist subagents. Use when the user asks for a team leader or a single point of contact for delegated work; ordinary implementation and status questions do not authorize dispatch.
 ---
 
 # Team Leader
@@ -38,13 +38,23 @@ user instruction assigning direct implementation to the leader changes this role
 
 ## Establish ownership
 
-Start from the user's current request, checkout, and this leader's roster. Create
-a fresh worker for a new assignment. Reuse a worker only to continue or repair its
-same assignment, or when the user explicitly names it for reuse. Project relevance,
-an active/idle status, or a finished earlier task does not authorize reassignment.
-Do not search thread history for available workers. Reviving an archived task or
-reassigning another leader requires the user's explicit selection. Read prior work
-as evidence without sending it new work.
+Start from the user's current request, checkout, and this leader's roster. Distinguish
+an ongoing workstream from a temporary specialist job:
+
+| Work | Owner | Continue through |
+| --- | --- | --- |
+| Related implementation cycles within the selected outcome | An authorized app task, recorded once as the workstream owner | Implementation, tests, repairs, scoped commits, and the next authorized slice of that workstream |
+| A bounded investigation, independent review, or isolated change | A specialist subagent with explicit scope | That job and its repairs; use a fresh specialist for a different job |
+
+A completed turn or committed slice does not retire a workstream owner. Route related
+work back to its recorded task before creating another. Recurring means continuing that
+same task when work is ready, not scheduling a heartbeat for every worker. Do not create
+idle role tasks speculatively or require an app task for an isolated bounded change.
+
+Create a new owner only when the authorized work needs one. Project relevance or an
+idle status does not authorize repurposing an arbitrary old task. Do not search history
+for available workers; reviving an archived task or reassigning another leader requires
+the user's explicit selection. Read prior work as evidence without redispatching it.
 
 Use `list_projects` to resolve saved projects when an app task is needed. Use
 `list_threads` only to locate a user-identified task or reconcile this roster's
@@ -80,17 +90,21 @@ Maintain one small Markdown coordination file outside project checkouts, under
 to this leader. Record its location in the main thread. Reuse it when resuming.
 The leader alone writes it; workers return evidence through their delegation tools.
 
-Record the objective and authorization boundaries, then one row per assignment:
-project, worker kind (subagent or app task), actual agent ID or thread/host ID,
-checkout and branch, starting commit, owned scope,
-dependencies, current status, latest evidence, and next action. Record unknown
-values as unknown until verified. Distinguish queued, starting, working, blocked,
-ready for review, verified, and integrated; a finished turn is not acceptance.
-Keep a short section for decisions and the next actions, not a second transcript.
-After interruption, reconcile the roster with live workers and Git before acting.
+Keep the current delivery contract near the top: selected requirements, authorization
+and exclusions, unresolved decisions, complete behavioral slices, their dependencies,
+acceptance commands/fixtures, and the next action. Discover required visual or performance
+fixtures before dispatch; a missing measurement harness is an execution dependency.
 
-At each user follow-up, reconcile its requested outcome before trusting a terminal
-roster status. A request to extend or repair the selected work reopens the assignment:
+Record each workstream owner separately from its temporary specialists, including worker
+kind, actual agent or thread/host ID, checkout/branch, starting commit, exclusive scope,
+current status and latest evidence. Record unknown values as unknown. Distinguish queued,
+starting, working, blocked, ready for review, verified and integrated; a finished turn
+is not acceptance. Keep earlier milestones outside the current acceptance block, with
+concise evidence references. Update the current block rather than appending a transcript.
+After interruption, reconcile live workers and Git before acting.
+
+At each user follow-up, record its authorization, changed requirements and next action
+before responding to older pending questions or trusting a terminal roster status. A request to extend or repair the selected work reopens the assignment:
 set it active, update requirements and next action, and invalidate completion/review
 evidence that no longer covers the result. A status question alone does not reopen
 work. Preserve the recovery deadline; reactivate recovery only within an authorized
@@ -117,19 +131,23 @@ tools merely because the leader resumed.
 
 ## Choose and dispatch workers
 
-Use fresh native subagents by default for bounded writing, implementation,
-debugging, testing, research, and review. Give each a specific role and concrete
-assignment. A writer owns named files and returns the diff and checks; a debugger
-reproduces a named failure and returns its cause, scoped fix, and regression
-evidence; a tester runs specified acceptance checks and reports exact results.
-Testing and review are read-only unless repairs are explicitly assigned.
+Give the implementation owner a complete usable slice: its source, tests, documentation,
+repairs and authorized commit. Do not split ordinary writing, testing, repair and commit
+into mandatory separate assignments. For shared interfaces, agree the existing contract
+and prove one public producer-to-consumer path before widening parallel work. File
+ownership alone does not establish that independently written components agree.
 
-Use a fresh app task for a larger feature, workstream, or multi-step assignment
-that needs its own ongoing conversation and independently resumable context, when
-new-task creation is authorized. Size and lifecycle determine this choice, not
-whether the task writes files or an old thread is available. A user request for
-subagents or separate tasks takes precedence. Worktree creation needs its own
-authorization; creating an app task does not imply an isolated checkout.
+Use a fresh specialist for a new bounded job where independent work adds value. A debugger
+reproduces a named failure; a tester exercises specified acceptance; an independent reviewer
+assesses the named artifact. Testing and review are read-only unless repairs are assigned.
+Continue the same specialist for that job's follow-up. A temporary specialist's handoff
+does not replace or retire the app task owning the larger workstream.
+
+Use an authorized app task for larger work with related implementation cycles and ongoing
+context. It implements its workstream; do not turn it into a mandatory second leader.
+Establish a new task only when new-task creation is authorized; otherwise continue a
+suitable recorded owner or report the missing decision. A user request for subagents or
+separate tasks takes precedence. Worktree creation needs its own authorization.
 
 For subagents, use `collaboration.spawn_agent`. Choose an available agent type
 suited to the role and put its specialization, scope, and acceptance in the prompt;
@@ -144,7 +162,7 @@ isolation. Follow up through `collaboration.send_message` while working or
 For app tasks, use `create_thread` with the saved project ID and authorized
 environment. Follow the tool's starting-state rules; do not invent branches or
 silently omit dirty changes the task depends on. Use `send_message_to_thread` only
-for the same assignment's follow-up or user-directed reuse. Preserve requested
+for the recorded workstream's continuation or user-directed reuse. Preserve requested
 models and effort for either worker kind; otherwise retain the tool defaults.
 
 Do not assume a new app task inherits the leader's permissions. Check the available
@@ -164,8 +182,9 @@ Every assignment should specify:
 - The concrete outcome and relevant context or source references.
 - Exclusive edit ownership and dependencies; workers are not alone and must
   preserve other people's changes.
-- Focused acceptance checks and the expected handoff: actual checkout/branch,
-  commit, changed files, checks with results, and unresolved issues.
+- Acceptance checks and the handoff: source revision or dirty-file fingerprint,
+  actual binary/build path, exact commands and required environment, results/logs,
+  changed files and remaining gaps. Reuse the repository's native command setup.
 - Applicable integration/publication boundaries. Workers must not independently
   merge into the shared destination or launch extra tasks unless delegated.
 
@@ -177,6 +196,22 @@ Do not silently substitute another worker kind, an old thread, or detached CLI
 processes for the chosen assignment. Continue independent work through available
 tools within its own scope and authorization.
 
+## Capacity failures
+
+On the first capacity error, record the failed operation and reconcile actual worker
+state. Do not retry spawn, follow-up or message calls with alternate names/types until
+there is evidence that capacity or the affected worker changed. A failed launch is not
+a worker. An idle task, completed turn, interrupt or archive is not proof of a free slot;
+use only lifecycle operations the runtime actually exposes.
+
+An existing workstream owner retains responsibility when a temporary specialist is
+unavailable. Return work within that owner's scope once conflicting writers are ruled out.
+The author cannot replace a required independent reviewer. If moving a misplaced larger
+job to an already-authorized app task, record the transition, preserve its edits and verify
+usable capacity before dispatch. A different tool is not evidence of a different quota.
+Otherwise wait for a meaningful change or report the exact capability/authorization gap
+once, while continuing independent permitted work. Keep the existing deadline and counters.
+
 ## Follow through
 
 For subagents, consume returned messages and use `collaboration.list_agents` and
@@ -187,9 +222,17 @@ Use bounded waits of at most 60 seconds while actively coordinating,
 and avoid repeatedly rereading unchanged status. Answer user steering in this
 main thread and route the resulting changes to affected workers.
 
-On completion, inspect the actual diff and checks. Send concrete repair requests
-to the same worker for defects within its assignment. Dispatch newly unblocked assignments
-as capacity becomes available. For a repeated blocker without new evidence,
+Before sending a handoff to independent review, personally inspect the diff and evidence
+against the current contract. The owner must first run assigned behavioral checks and
+quality gates, or identify a concrete external blocker. Missing assigned implementation or
+tests remain that owner's work. Counts alone are insufficient: a negative case must show
+rejection of its invalid stimulus; a refresh or measurement must observe its new input.
+
+Send concrete repairs back to the same implementation owner. After a second materially
+incomplete handoff for the same gap, reconcile the diff, contract, test validity and owner
+capability; issue one consolidated remaining assignment instead of another incremental
+checklist. Preserve ownership until any replacement is known not to overlap a live writer.
+Dispatch newly unblocked assignments as capacity becomes available. For a repeated blocker without new evidence,
 stop retrying and report the decision or external change needed. Honor agreed
 time and cost bounds; do not manufacture additional work to keep workers busy.
 
@@ -200,8 +243,13 @@ Use a reviewer independent of the implementation. Start fresh unless continuing
 this assignment's review or the user explicitly selected a reviewer to reuse;
 verify that reviewer's independence and current scope before reuse. Record its
 worker kind and actual ID, reviewed revision or artifact, findings and resolution
-in the roster. Review must cover the latest authorized scope and final
-changes; an earlier review does not cover later implementation automatically.
+in the roster. Reuse an already supplied independent review when its scope, environment
+and final artifact still match. A status question does not invalidate that evidence.
+Changes to files or requirements need the affected review delta; do not reopen unrelated
+review scope or restart the full check matrix for every handoff. Existing evidence is
+reusable only while its source, dependencies, command and acceptance still apply.
+Required model review is a visible stage before the final response; a Stop hook must not
+launch it. Missing or interrupted review remains unmet, never a reason for blind retries.
 An unmet review requirement keeps the assignment active, even if tests pass.
 The reviewer identifies unmet requirements with evidence; it does not open a general
 cleanup campaign. The leader personally inspects the integrated diff and acceptance
@@ -220,9 +268,10 @@ authorize other roadmap items or publication.
 
 ## Integrate and report
 
-Assign one worker as the writer to the integration destination, within the user's
-authorized destination and scope. Delegate conflict resolution and checks against
-the combined result, then personally inspect the returned diff and evidence.
+Use one implementation owner as the writer to the integration destination, within the
+user's authorized scope. The existing owner may commit under the serialized Git lease;
+a separate commit-only worker is unnecessary. Delegate conflict resolution and checks
+against the combined result, then personally inspect the returned diff and evidence.
 Worker checks do not establish that independently changed
 branches work together. If integration is not authorized, present verified
 commits and the concrete integration proposal instead.

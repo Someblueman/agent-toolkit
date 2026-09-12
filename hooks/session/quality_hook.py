@@ -116,10 +116,12 @@ def handle(payload, metrics):
         root = find_root(payload["cwd"], require_config=False)
     except SetupError:
         return {}  # No Git repository or explicit project configuration.
+    # Recheck this event on every invocation, including commands cached by Codex.
+    # Keeping quality.json for the CLI does not opt a repository into hooks.
+    if not locally_registered(root, event):
+        metrics["outcome"] = "not_enabled"
+        return {}
     if not (root / "quality.json").is_file():
-        if not locally_registered(root):
-            metrics["outcome"] = "not_enabled"
-            return {}
         return {} if event == "PostToolUse" else setup_required(payload, root, metrics)
     config = load(root)
     if "verification" not in config and event != "PostToolUse":
@@ -127,15 +129,9 @@ def handle(payload, metrics):
     session = payload.get("session_id")
     if not isinstance(session, str) or not session:
         raise SetupError("Missing hook session_id")
-    key = hashlib.sha256((str(root) + session).encode()).hexdigest()
     # OS cache, not source tree. State is per session, never a shared success certificate.
-    directory = Path(
-        os.environ.get(
-            "QUALITY_HOOK_STATE_DIR", str(Path.home() / ".cache/agent-toolkit/quality")
-        )
-    )
-    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-    path = directory / (key + ".json")
+    path = work_review.state_path(root, session)
+    directory = path.parent
     # One lock per physical checkout, never per shared git common directory.
     checkout = hashlib.sha256(str(root).encode()).hexdigest()
     cache_path = directory / (checkout + ".checks.json")
@@ -162,18 +158,29 @@ def process_locked(payload, metrics, root, config, path, cache_path):
     message = preflight(root, config, current, state, metrics)
     if event == "UserPromptSubmit" and config.get("verification", {}).get("review"):
         work_review.begin(root, payload, state, path.with_suffix(".review"))
+        message += (
+            "\nRequired scoped review must run visibly before the final answer: "
+            + work_review.command(root)
+            + ". Read and assess its report with review --accept 'assessment'. "
+            "If a later message only asks for status, reuse the completed report with "
+            "--accept 'assessment' --same-scope instead of starting another review. "
+            "Stop only checks acceptance; it never launches a reviewer."
+        )
     result = process(event, payload, root, config, current, state, cache, metrics)
     if (
         event == "Stop"
         and config.get("verification", {}).get("review")
         and metrics.get("outcome") in ("pass", "cached", "skipped", "manual_required")
     ):
-        review, block = work_review.finish(root, config, state, path)
+        review, block = work_review.finish(
+            root, state, path, payload.get("stop_hook_active", False)
+        )
         if snapshot(root, config) != current:
             raise SnapshotChanged(
                 "Sources changed during review; rerun verification on the final files"
             )
         if review:
+            metrics["outcome"] = "review_incomplete"
             result = reply(event, review, block)
     result = add_preflight(event, result, message)
     for target, value in ((path, state), (cache_path, cache)):

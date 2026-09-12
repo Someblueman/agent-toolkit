@@ -54,7 +54,7 @@ class HookTests(Repository):
         self.assertEqual(self.hook("Stop"), {})
 
     def test_install_preserves_hooks_and_is_idempotent(self):
-        self.config()
+        self.config(register=False)
         destination = self.root / ".codex"
         destination.mkdir()
         path = destination / "hooks.json"

@@ -4,6 +4,7 @@ import argparse
 import subprocess
 from pathlib import Path
 
+from . import work_review
 from .codex_hooks import install_codex, plan_codex, uninstall_global
 from .config import SetupError, SnapshotChanged, find_root, load
 from .profiles import PINS
@@ -36,6 +37,20 @@ def main():
         "check", help="Run configured native checks without installing"
     )
     checks.add_argument("--fast", action="store_true")
+    review = sub.add_parser(
+        "review", help="Run a visible scoped review before completion"
+    )
+    review.add_argument("--session", help="Owning task ID; defaults to CODEX_THREAD_ID")
+    review.add_argument(
+        "--accept",
+        metavar="ASSESSMENT",
+        help="Record assessment of a current completed review",
+    )
+    review.add_argument(
+        "--same-scope",
+        action="store_true",
+        help="With --accept, confirm later messages did not change review requirements",
+    )
     install = sub.add_parser(
         "install-codex", help="Merge project-local Codex hooks; preserve other hooks"
     )
@@ -61,14 +76,7 @@ def main():
         elif args.command == "uninstall-codex":
             uninstall_global(toolkit, args.dry_run)
         else:
-            root = find_root(root)
-            config = load(root)
-            if args.command == "doctor":
-                print("\n".join(doctor(root, config)))
-            elif args.command == "check":
-                code, output = check(root, config, "fast" if args.fast else "full")
-                print(output)
-                return code
+            return configured_command(args, root)
         return 0
     except SnapshotChanged as exc:
         print(f"SNAPSHOT CHANGED: {exc}")
@@ -76,3 +84,16 @@ def main():
     except (SetupError, OSError, subprocess.SubprocessError) as exc:
         print(f"SETUP REQUIRED: {exc}")
         return 2
+
+
+def configured_command(args, root):
+    root = find_root(root)
+    config = load(root)
+    if args.command == "doctor":
+        print("\n".join(doctor(root, config)))
+        return 0
+    if args.command == "check":
+        code, output = check(root, config, "fast" if args.fast else "full")
+        print(output)
+        return code
+    return work_review.review(root, config, args.session, args.accept, args.same_scope)

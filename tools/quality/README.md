@@ -138,7 +138,7 @@ project manifest and lockfile. Inspect the setup dry-run first.
 `quality.json` is a trusted executable configuration, version 1:
 
 - `verification`: `green` acceptance description, `manual` evidence descriptions, and
-  optional boolean `review` (default false) for one completed-work Luna review.
+  optional boolean `review` (default false) requiring an explicitly run scoped Luna review.
   Required for lifecycle verification; absent in unconfigured language starters.
 - `roots`: explicit files/directories, relative to the repository root.
 - `exclude`: repository-relative glob patterns. No blanket exclusion of `packages/`.
@@ -230,8 +230,8 @@ recognized toolkit handlers from `$CODEX_HOME/hooks.json`, preserving unrelated 
 A remaining global adapter is a setup conflict, not an inherited project opt-in.
 
 Reinstallation is idempotent. A different existing quality adapter causes a conflict;
-the exact former 300-second Stop definition is upgraded to 1800 seconds to accommodate
-verification and the separately bounded review. The command references this toolkit
+the exact former 300-second Stop definition is upgraded to the existing 1800-second
+verification budget. Model review has its own limit and is never launched by Stop. The command references this toolkit
 checkout with an absolute path. Keep it there or update the registration after moving it.
 The installer does not change feature flags, permissions, hook trust or enablement.
 Review/trust new definitions in Codex `/hooks`; formerly disabled project entries need
@@ -264,8 +264,11 @@ This follows the [Codex registration and trust contract](https://learn.chatgpt.c
 
 The adapter uses per-session state under `~/.cache/agent-toolkit/quality` (override with
 `QUALITY_HOOK_STATE_DIR` for tests). This is a cache, not an acceptance certificate. Hooks
-in unconfigured repositories without a local registration are inert, even if an older
-Codex session still dispatches a removed global handler. Missing setup in an explicitly
+without a matching project registration for that specific event are entirely inert,
+even when `quality.json` exists or an older Codex session still dispatches a removed
+handler. Removing only the quality Stop entry disables Stop while other registered
+quality events continue. You can keep `quality.json` for explicit CLI checks; no rename
+or deletion is needed. Unregistered events perform no checks, review or telemetry. Missing setup in an explicitly
 registered project prompts onboarding and reports incomplete verification at Stop. The final check reconciles
 the configured inventory, so shell edits do not have to be inferred from command text.
 
@@ -277,8 +280,8 @@ security boundary. Hook activation and trust are separate from protocol verifica
 ## Review completed work
 
 Add `"review": true` under the repository's `verification` object to enable review.
-It is off when omitted or false. Install the local hooks as above and trust/enable the
-updated Stop definition. The reviewer uses the installed, authenticated Codex CLI with
+It is off when omitted or false. Install and trust/enable the local hooks as above.
+The reviewer uses the installed, authenticated Codex CLI with
 `gpt-5.6-luna`, reasoning effort `max`, a read-only sandbox and a 15-minute process limit.
 This is a local CLI workflow using your Codex account/model service, not on-device inference.
 It consumes account quota. No API key, GitHub integration or new worktree is required.
@@ -291,25 +294,66 @@ and repository object store are preserved; snapshots live in the private hook ca
 Git ignore rules apply. Conflicted, sparse or changed-submodule checkouts report review
 unavailable rather than claiming that a partial snapshot covers the work.
 
-After automated checks pass, Stop launches one native review and returns the report to the
-parent for assessment. The parent fixes valid findings within the authorized task and
-reruns relevant checks. Subsequent verification does not automatically launch another
-review. Timeouts, interruption, a missing report or a checkout changed during review are
-incomplete outcomes, never clean-review certificates. Manual criteria still require evidence.
-Reviewer child sessions skip this adapter, preventing recursive hooks and review loops.
+Run review as a visible command before the final answer, after the relevant automated
+checks pass. The prompt hook supplies the absolute command for the installed toolkit:
 
-A successful Stop is the automatic boundary; the hook cannot infer that separate completed
-turns belong to a larger project. For work spanning several already completed turns, use an
-explicit on-demand review of the intended base/diff. Enabling review mid-turn has no opening
-snapshot, so that work also needs an on-demand review. The next prompt starts normal capture.
+```sh
+tools/quality/bin/quality review
+# Read the report and assess each finding against the authorized task.
+tools/quality/bin/quality review --accept 'Assessment of the findings and their resolution'
+```
+
+The command uses `CODEX_THREAD_ID` to select the owning task. Outside a Codex task, pass
+`--session ID` from the prompt hook's session; it must have an opening snapshot. Steering
+preserves the opening tree and records the latest request. Missing initial capture
+requires a new prompt before implementation; the command does not guess a base.
+
+If a message arrives while review is running, let that attempt finish. Changed requirements
+need a fresh review. For a status-only question or other message that changes no review
+requirements, assess the completed report without another model call:
+
+```sh
+tools/quality/bin/quality review --accept 'Findings assessed; later messages changed no requirements' --same-scope
+```
+
+`--same-scope` requires an explicit assessment. It cannot accept a missing, failed,
+interrupted, altered or stale report, and cannot bypass changed files. The report retains
+the request revision it actually reviewed; acceptance separately records the current request.
+
+Stop checks the saved report, assessment, and current tree without launching a model.
+Missing, failed, interrupted, unavailable, unassessed or stale review blocks acceptance.
+Stop requests at most one continuation for the same files and request. Further stops
+return an explicit incomplete warning, never silent success or an accepted review; the
+telemetry records `review_incomplete`. This permits an honest incomplete handoff without
+an automatic quota-consuming loop.
+Fix valid findings within the authorized task, rerun relevant checks, and run visible
+review again if the files or requirements changed. An unchanged completed report is reused.
+Never treat retries or an unavailable review as a pass; report an incomplete handoff when
+review cannot finish. Do not start an automatic recursive review/fix loop. Manual criteria
+still require evidence. Reviewer child sessions skip this adapter, preventing recursive hooks.
+
+The visible command prints progress every 30 seconds. Cancellation or caller death closes
+a supervisor pipe and terminates the owned reviewer tree, including children that create
+separate process groups or sessions. Cleanup uses the Unix `ps` command to find descendants.
+The supervisor also enforces the time limit. Only a session review lock is held during
+model work: other tasks and native checks can proceed. The supervisor retains that session
+lock through cleanup, including after the caller is killed. The checkout lock protects brief
+snapshot/state operations before and after review. An older attempt cannot overwrite a
+new work interval or silently accept later requirements. Status-only follow-ups can reuse
+the recorded evidence through the explicit scope assessment above.
+
+A successful Stop is the interval boundary; separate completed turns start new captures.
+For a larger review spanning completed intervals, supply the intended base/diff through a
+separate explicitly scoped review. This command covers its recorded work interval only.
 
 The latest prompt, exact trees, native event log, stderr and report are stored in the
 session's `*.review/` cache directory. Reports identify the exact before/after tree IDs
 through `prompt.txt`. These artifacts can contain source and task text; the cache directory
 is private to the user. Later work in the same session replaces its latest report/logs.
 They remain until the session cache is removed; do not remove an active session's cache.
-No service or background polling process is installed. The checkout's quality lock remains
-held during the review, so concurrent hook attempts report busy rather than duplicate work.
+No persistent service or scheduler is installed. The supervisor exists only for its visible
+review command. Review assessment records the parent's judgment; the hook checks evidence
+currency, not the semantic correctness of that judgment. Native checks still gate completion.
 
 ## Verification
 
@@ -330,7 +374,8 @@ boundaries, plus the real Ruff-to-Codex JSON feedback path. Cabal's fallback ins
 and a live Codex desktop turn are not covered by these tests. Hook protocol tests cover
 read-only turns, missing tools, retry bounds, repair, idempotence and existing-hook conflicts.
 Review tests cover multiple commits, dirty starts, unchanged work, scope stability, child-hook
-suppression, interruption, process-group timeout cleanup and the absence of recursive review.
+suppression, signals (including caller SIGKILL), timeout cleanup across child sessions,
+status-message reuse, event-specific opt-out and bounded incomplete completion.
 The optional account-backed test verifies that native Luna identifies a seeded regression
 across two commits and that the repair continuation does not launch another review.
 

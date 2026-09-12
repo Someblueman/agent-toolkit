@@ -13,17 +13,16 @@ from .runner import run
 EVENTS = ("UserPromptSubmit", "PostToolUse", "Stop")
 
 
-def locally_registered(root):
+def locally_registered(root, event):
     path = root / ".codex/hooks.json"
     if not path.is_file():
         return False
     script = str(Path(__file__).resolve().parents[3] / "hooks/session/quality.py")
     data = read_hooks(path)
-    for groups in data["hooks"].values():
-        for group in groups:
-            for hook in group.get("hooks", []):
-                if script in shlex.split(hook.get("command", "")):
-                    return True
+    for group in data["hooks"].get(event, []):
+        for hook in group.get("hooks", []):
+            if script in shlex.split(hook.get("command", "")):
+                return True
     return False
 
 

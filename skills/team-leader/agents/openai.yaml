@@ -1,6 +1,6 @@
 interface:
   display_name: "Team Leader"
-  short_description: "Lead specialist subagents and larger project tasks"
-  default_prompt: "Use $team-leader to coordinate this work with fresh specialist subagents for bounded assignments and fresh app tasks for larger work where authorized, and keep me updated here."
+  short_description: "Lead recurring workstreams and bounded specialists"
+  default_prompt: "Use $team-leader to coordinate this work through recurring app tasks that own their workstreams and fresh specialists for bounded new jobs, where authorized, and keep me updated here."
 policy:
   allow_implicit_invocation: false

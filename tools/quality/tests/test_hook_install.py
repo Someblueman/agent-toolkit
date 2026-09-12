@@ -10,7 +10,7 @@ from support import ROOT, Repository
 
 class HookInstallation(Repository):
     def test_combined_dry_run_and_repeat_preserve_policy_and_hooks(self):
-        config = self.config()
+        config = self.config(register=False)
         self.assertEqual(self.cli("setup", "--codex", "--dry-run").returncode, 0)
         self.assertFalse((self.root / ".quality").exists())
         self.assertFalse((self.root / ".codex").exists())
@@ -49,7 +49,7 @@ class HookInstallation(Repository):
         for _ in range(2):
             self.assertEqual(self.cli("uninstall-codex", "--global").returncode, 0)
             self.assertEqual(json.loads(path.read_text()), {"hooks": {"Stop": [other]}})
-        self.config()
+        self.config(register=False)
         self.assertEqual(self.cli("setup", "--codex").returncode, 0)
         self.assertTrue((self.root / ".codex/hooks.json").is_file())
 
@@ -61,7 +61,7 @@ class HookInstallation(Repository):
         self.assertEqual(path.read_text(), custom)
 
     def test_project_interpreter_alias_and_old_budget_are_preserved_or_upgraded(self):
-        self.config()
+        self.config(register=False)
         self.assertEqual(self.cli("install-codex").returncode, 0)
         path = self.root / ".codex/hooks.json"
         data = json.loads(path.read_text())
@@ -86,7 +86,7 @@ class HookInstallation(Repository):
         self.assertEqual(json.loads(path.read_text()), installed)
 
     def test_registration_requires_a_working_python_interpreter(self):
-        self.config()
+        self.config(register=False)
         self.cli("install-codex")
         path = self.root / ".codex/hooks.json"
         data = json.loads(path.read_text())
@@ -100,7 +100,7 @@ class HookInstallation(Repository):
         self.assertFalse((self.root / ".quality").exists())
 
     def test_failed_provisioning_does_not_register_hooks(self):
-        config = self.config()
+        config = self.config(register=False)
         config["tools"]["native"]["command"] = ["/missing"]
         self.write_config(config)
         self.assertEqual(self.cli("setup", "--codex").returncode, 2)

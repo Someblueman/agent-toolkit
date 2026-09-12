@@ -40,7 +40,10 @@ clock on a poll, worker handoff, interruption, or automatic recovery continuatio
 
 `progress` changes only for new observable evidence, not another
 poll, rewritten summary, or renewed intention. Keep detailed acceptance criteria,
-worker IDs/checkouts, review findings, and evidence in the Markdown body.
+workstream owner and specialist IDs/checkouts, review findings, and evidence in the
+current delivery block of the Markdown body. A recurring owner's completed slice does
+not retire the workstream or create a new recovery window. Keep its identity for related
+authorized work; a status question does not invalidate applicable evidence.
 `waiting_on` lists only IDs currently observed running through the correct tool:
 native collaboration for subagents, app-task tools for threads. Record each
 worker's kind in the roster body. Refresh live state on recovery; clear IDs as soon
@@ -73,8 +76,10 @@ Create or reactivate recovery with `automation_update` as part of leader setup:
 
 1. Inspect existing automations. Reuse the heartbeat matching this actual leader
    thread and absolute roster path, regardless of which worker needs attention.
-   If several match, retain one and pause the other matching heartbeats before
-   continuing. A replacement leader needs its own heartbeat and roster; leave a
+   Verify the stored automation's actual target and roster path before any mutation;
+   an ID copied from an old roster is not ownership. Never retarget, resume or pause an
+   automation belonging to another leader. If several belong to this same leader and
+   roster, retain one and pause only those duplicates before continuing. A replacement leader needs its own heartbeat and roster; leave a
    previous leader's paused automation paused.
 2. Create or update a thread heartbeat with `status: ACTIVE`, targeting the actual
    leader thread, every five minutes unless the user chose another cadence. Its
@@ -85,6 +90,11 @@ Create or reactivate recovery with `automation_update` as part of leader setup:
    target thread, cadence, and prompt's roster path and scope. Record the returned
    ID in `heartbeat_id`. Neither a successful hook install nor a remembered ID is
    proof that the scheduler has an active heartbeat for this leader.
+
+A view call can render an automation card in the current conversation; that is not proof
+of scheduled delivery into this task. Prefer a read-only inspection that avoids a misleading
+card, or explain the card before displaying it. Copied worker context does not transfer
+ownership of the leader's heartbeat or roster.
 
 Repeat this live check on follow-up or resumption. If an active leader roster within
 its recovery window has a missing or accidentally paused heartbeat, recreate or
@@ -112,10 +122,12 @@ coordinator. Use a clear prompt equivalent to:
 > Otherwise reconcile actual worker states and Git, coordinate the next authorized
 > step, consume worker handoffs, and delegate repairs, checks, commits and integration
 > through the recorded endpoint. Personally inspect returned diffs and evidence.
-> Use the skill's delegation rules: fresh specialist subagents for bounded new
-> assignments, fresh authorized app tasks for larger independent work. Continue
-> an existing worker only for its same assignment or explicit user-directed reuse.
-> Do not implement project changes yourself; queue work when worker slots are full.
+> Route related implementation, tests, repairs and commits back to the recorded app-task
+> workstream owner. Use fresh specialists for bounded new jobs; continue the same specialist
+> for that job's repair. Do not replace an owner because a turn or slice finished.
+> On a capacity failure, record the operation and reconcile live state; retry only after
+> a meaningful capacity/worker change. Do not assume another tool has spare quota.
+> Do not implement project changes yourself or duplicate an active writer.
 > Keep the roster current. Do not launch duplicate workers,
 > new roadmap items, or publish. Pause this heartbeat when complete, blocked, or
 > paused. Do not reset recovery counters or extend the deadline automatically.

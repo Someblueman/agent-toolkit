@@ -57,6 +57,10 @@ class WorktreeTests(Repository):
                 ["git", "-C", str(self.root), *args], check=True, capture_output=True
             )
         self.assertTrue((worktree / ".git").is_file())
+        self.assertEqual(self.invoke(worktree, "Stop"), {})
+        self.assertEqual(
+            self.cli("--root", str(worktree), "install-codex").returncode, 0
+        )
         self.invoke(self.root, "UserPromptSubmit")
         self.invoke(worktree, "UserPromptSubmit")
         self.source.write_text("value = 2\n")

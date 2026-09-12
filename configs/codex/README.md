@@ -46,11 +46,16 @@ for a repository with its own `quality.json`. This provisions its selected tools
 registers hooks only in that repository's `.codex/hooks.json`. For first-time setup,
 select the repository's language profiles and source roots as described in the quality guide.
 To opt in before defining `quality.json`, run `install-codex`; the next prompt requests
-that project's verification criteria. Unregistered, unconfigured repositories are inert.
+that project's verification criteria. An unregistered quality event is inert even when
+`quality.json` exists, including a removed Stop entry still cached by Codex.
 
 Global installation is no longer supported. Remove a former registration with
 `tools/quality/bin/quality uninstall-codex --global`; unrelated user hooks are preserved.
 Review/trust project definitions in Codex `/hooks`. Existing disabled local registrations
 remain disabled until enabled there. Installation does not grant trust or enablement.
-Repositories can separately enable one completed-work Luna max review with
-`verification.review: true`; see the quality guide for its scope and time limit.
+Repositories can require a visible completed-work Luna max review with
+`verification.review: true`. Run `quality review` and assess its report before completion;
+Stop validates the current accepted result without launching a reviewer and requests at
+most one continuation for unchanged incomplete work. A status-only message can reuse a
+completed report with an explicit `--same-scope` assessment. See the quality guide for
+commands, cancellation, scope, and time limit.

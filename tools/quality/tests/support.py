@@ -33,7 +33,7 @@ class Repository(unittest.TestCase):
             env=dict(os.environ, CODEX_HOME=str(self.root / "codex-home")),
         )
 
-    def config(self, body="raise SystemExit(0)"):
+    def config(self, body="raise SystemExit(0)", *, register=True):
         config = build(self.root, "python", roots=["src"])
         config["verification"] = {
             "green": "The fixture's declared check passes.",
@@ -54,6 +54,9 @@ class Repository(unittest.TestCase):
         config["checks"] = config["checks"][:1]
         config["checks"][0]["args"] = []
         self.write_config(config)
+        if register:
+            result = self.cli("install-codex")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return config
 
     def write_config(self, config):
