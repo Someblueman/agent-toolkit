@@ -9,9 +9,11 @@ Make a delegated assignment converge to a usable, verified, locally committed re
 without repeated user intervention, avoidable worker churn, or repeated invalid checks.
 Keep the leader as the user's point of contact and accountable reviewer.
 
-Implement the repair in the canonical `skills/team-leader/` package, with related
-documentation and affected tests. Keep it usable across repositories. Hydra is the
-observed failure case and a possible later acceptance trial, not a dependency.
+Implement the delegation repair in the canonical `skills/team-leader/` package, with
+related documentation and affected tests. The later investigation of this planning task's
+stall also identifies a required repair in the shared quality-review hook, described below.
+Keep both usable across repositories. Hydra is the observed delegation failure case and a
+possible later acceptance trial, not a dependency.
 
 The user clarified the intended model: recurring app tasks together with native subagents.
 That hybrid is confirmed intent. The routing and ownership rules below are proposed ways
@@ -79,6 +81,45 @@ the current decision and completion state are buried among historical milestones
   not just actively working assignments. The effective cause of this session's intermittent
   capacity failures is unresolved; do not assume a finished or interrupted agent releases
   capacity. See the [configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+
+### The reported heartbeat leak was a review-hook stall in this task
+
+The user identified this planning task as the affected chat and supplied a screenshot of
+the Hydra automation card, explaining that the task stayed busy until manually stopped.
+The card and the stall have different causes:
+
+- At 23:48 UTC, this investigation called `automation_update` with `mode: view` for
+  `hydra-ci-optimization-recovery`. The tool returned “Rendered automation card in the app.”
+  That read-only view produced the card in this chat. It did not create or retarget a
+  heartbeat. The stored target remains the Hydra leader, not this planning task.
+- This task has no team-leader roster. Its repository hook configuration contains the
+  quality hook, not `completion.py`; the global hook configuration is empty. The observed
+  evidence does not establish cross-chat heartbeat delivery.
+- The first final response was written at 23:51:56 UTC. At 23:51:56.409, the quality Stop
+  hook prepared a separate native review of the 223-line plan. The parent turn remained
+  open until the user's interruption at 23:57:33: over five minutes after the answer.
+- `hooks/session/quality_hook.py:process_locked()` calls `work_review.finish()` while
+  holding the checkout lock. `tools/quality/quality_lib/work_review.py:run_review()` starts
+  `codex exec` with Luna/max and synchronously waits, with a 900-second timeout. Any changed
+  captured tree, including a plan-only document, triggers that review under `review: true`.
+- The review child `01a092e2-9126-7980-8d4d-e2393ca8111e` logged a command after the parent
+  was interrupted and wrote its report at 00:01:28 UTC. The actual review lasted about
+  nine minutes 32 seconds and survived the user's stop. `start_new_session=True` separates
+  the child process group; the exact cancellation signal delivered by the app is unknown.
+  The observed cleanup failure must be tested at the app interruption boundary.
+- Repeated “quality check already running” notices were brief `PostToolUse` collisions
+  between parallel commands in this same task. The inspected notices returned in about
+  0.4–1.5 ms alongside short successful snapshots. They do not prove another chat was
+  blocking this one. The synchronous Stop review explains the sustained wait.
+
+The diagnosis is therefore a confirmed post-response review wait and cancellation defect,
+plus a misleadingly placed inspection card. No heartbeat misrouting is proven for this
+example. The broader claim should remain open if another actual misdelivery is observed.
+
+There is a separate stale-ownership risk: two old Hydra rosters retain the same
+`hydra-leader-completion-trial` ID, while that paused automation targets only the newer
+owner. Any future heartbeat mutation must verify actual ownership rather than trusting an
+old roster ID. This is not evidence that either old task caused the reported stall.
 
 ## Proposed repair
 
@@ -191,7 +232,8 @@ temporary specialist is unavailable; return work within its ownership to it once
 writers are ruled out. If the blocked operation is independent review, the author cannot
 substitute for that reviewer. For a misplaced larger assignment, use an already-authorized
 app task when that lifecycle fits, explicitly record the transition, and prevent overlapping
-writers. Otherwise wait for a meaningful state change or report the exact missing
+writers. Establish that the destination has usable capacity; do not assume a different
+worker interface bypasses an exhausted limit. Otherwise wait for a meaningful state change or report the exact missing
 capability/authorization once while continuing independent authorized work.
 
 ### 5. Keep recovery honest and qualify delivery separately
@@ -208,28 +250,74 @@ the revised handoff/capacity behavior; retain its CLI and version-1 roster contr
 If a live trial still demonstrates false progress or stale-wait recovery, design a bounded
 runtime correction against that reproduction rather than adding guessed liveness fields.
 
+### 6. Move slow automatic review into visible, cancellable work
+
+Preserve repository-native verification and required independent review. Change when and
+how the model review runs: it must be an explicit visible stage before the final answer,
+not an invisible child launched synchronously by Stop after the answer has been emitted.
+Expose the existing scoped reviewer through the quality CLI and integrate its invocation
+with the completion workflow. Keep `verification.review: true` as a requirement for scoped
+review; do not silently disable it to make the task appear finished.
+
+The Stop hook should validate the recorded result for the relevant work interval and
+current source snapshot. If review is required but missing, report that bounded unmet
+requirement promptly so the agent can run the visible review stage. Do not spawn a model
+reviewer, wait on network/model work, or start a repeated review loop from Stop. Preserve
+the existing distinction between completed, failed, unavailable, interrupted, and stale
+evidence; an interrupted attempt must never count as a pass. Reuse applicable review
+evidence instead of launching a second hidden reviewer for work already covered.
+
+Run the visible review with normal progress reporting and cancellation. Verify that app
+interruption stops its owned process tree and releases any lock. Do not hold the shared
+checkout check lock while waiting for a model; snapshot before review and revalidate after
+it, with session-owned review state. Keep one attempt per work interval and prevent an old
+review completion from overwriting a newer interval after the user resends a message.
+Reuse the existing scoped trees and review bookkeeping rather than introducing a scheduler.
+
+For diagnosis, distinguish viewing another task's automation card from scheduling or
+delivering its heartbeat. Prefer an inspection route that does not add an automation card
+to an unrelated chat, or explain the card before displaying it. Check the actual automation
+target before changing its status; an inherited prompt or stale roster is not ownership.
+Recurring worker tasks do not acquire the leader's recovery settings from copied context.
+
 ## Work stages and acceptance
 
-1. **Revise the canonical workflow.** Update `skills/team-leader/SKILL.md` and
+1. **Repair the observed review stall.** Update the quality CLI, `work_review.py`, and
+   `hooks/session/quality_hook.py` so model review is visible and cancellable, and Stop
+   consumes its result without launching it. Update affected lifecycle tests and usage
+   instructions together. Preserve current review scope, required checks, and other hooks.
+2. **Revise the canonical workflow.** Update `skills/team-leader/SKILL.md` and
    `references/completion.md`; align `scripts/completion.py` continuation wording only if
    needed. Update `docs/catalog.md` or adapter documentation only where behavior descriptions
    become inaccurate. Rewrite ownership, dispatch, follow-up, reviewer reuse, and recovery
    together so no blanket fresh-assignment rule contradicts recurring workstream ownership.
    Keep the policies coherent and concise. Do not edit installed outputs directly.
-2. **Verify compatibility.** Run the ten completion tests, affected configured lint/format
-   checks if Python changes, relevant installer tests, and `git diff --check`. Exercise
+3. **Verify compatibility.** Run the completion tests, the full configured Quality behavior
+   suite covering shared runner and lifecycle hooks, affected configured lint/format
+   checks, relevant installer tests, and `git diff --check`. Exercise
    temporary installation and repeat installation; compare the live install read-only.
    If installer code changes, run the repository's full required installer acceptance.
    Refresh the live install only when authorized. Unit and installation success must not
    be reported as proof of improved delivery.
-3. **Observe a bounded real assignment after explicit execution/trial authorization.**
-   Use a selected cohesive slice with a real CLI/TUI boundary, a meaningful negative case,
-   independent review, and a local commit endpoint. Prefer existing remaining work if still
-   suitable; re-inspect Hydra first because it is changing. Do not manufacture another
-   feature or interrupt its active owners just to test the workflow.
+4. **Observe bounded live acceptance after explicit execution/trial authorization.** First
+   reproduce a plan-only completion and interrupted review in a disposable registered
+   project through the actual app. Then use a selected cohesive delivery slice with the
+   target repository's real public boundary (CLI/TUI for Hydra), a meaningful negative
+   case, independent review, and a local commit endpoint. Prefer existing remaining work
+   if still suitable; re-inspect Hydra first because it is changing. Do not manufacture
+   another feature or interrupt its active owners just to test the workflow.
 
 The delivery trial must show:
 
+- A plan-only completion does not launch hidden model work after the final answer. With
+  configured native checks already cached, Stop completes within a proposed two-second
+  local allowance and records review as satisfied or explicitly unavailable, never guessed.
+- A deliberately slow review is visible before completion. User interruption terminates
+  its owned child processes; the next message proceeds without a lingering review or lock.
+  Test late completion against a newer work interval and prevent stale state overwrite.
+- An unrelated chat sharing a checkout remains outside leader recovery. Viewing another
+  task's automation leaves target/status unchanged; a stale roster cannot mutate another
+  owner's heartbeat. Actual scheduled delivery remains a separate live check.
 - A workstream task keeps the same actual task ID through a slice, any repair, and the next
   related already-authorized slice. A temporary specialist can finish without retiring or
   replacing that owner. No arbitrary old task is repurposed and no new scope is inferred.
@@ -253,7 +341,9 @@ The delivery trial must show:
 The confirmed direction is recurring app tasks plus bounded specialist subagents. The
 recommended implementation makes the workstream task the continuing delivery owner and
 uses specialists where they add independent value. It also repairs authorization
-reconciliation, handoff quality, and capacity handling. A working leader that directly
+reconciliation, handoff quality, and capacity handling. The immediate new priority is the
+observed quality-review stall; heartbeat retargeting is not established by this screenshot.
+A working leader that directly
 implements remains an optional separate choice; the hybrid does not require that change.
 
 This plan is not approved for execution. Do not message the Hydra leader, change its roster
@@ -263,7 +353,12 @@ this planning request. No subagents were launched for the investigation.
 Evidence locations for later verification:
 
 - Toolkit: `skills/team-leader/{SKILL.md,references/completion.md,scripts/completion.py}`,
-  `scripts/test_leader_completion.py`, and `docs/team-leader-completion-trial.md`.
+  `scripts/test_leader_completion.py`, and `docs/team-leader-completion-trial.md`; quality
+  lifecycle: `hooks/session/quality_hook.py`, `tools/quality/quality_lib/work_review.py`,
+  `tools/quality/quality_lib/review_scope.py`, and `tools/quality/tests/test_work_review.py`.
+- This task's interrupted review artifacts are under
+  `/Users/sws/.cache/agent-toolkit/quality/2041f7662200816a5e6119c338ad16876576aa5181baa957c3696b58ceefc97c.review/`.
+  The report is scoped to the first plan version; later revisions supersede it.
 - Current Hydra records: `/Users/sws/.codex/team-leader/01a08fe3-16c1-7212-8401-cb2c1ea37c8d/`,
   especially `roster.md`, `interaction-handoff.md`, `interaction-review/native-parent-final.md`,
   `interaction-review/native-checkpoint-final-review.md`, and `completion-events.jsonl`.
