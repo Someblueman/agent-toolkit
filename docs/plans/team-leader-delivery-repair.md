@@ -260,9 +260,12 @@ with the completion workflow. Keep `verification.review: true` as a requirement 
 review; do not silently disable it to make the task appear finished.
 
 The Stop hook should validate the recorded result for the relevant work interval and
-current source snapshot. If review is required but missing, report that bounded unmet
-requirement promptly so the agent can run the visible review stage. Do not spawn a model
-reviewer, wait on network/model work, or start a repeated review loop from Stop. Preserve
+current source snapshot. When `verification.review` is true, missing, failed, interrupted,
+unavailable, or stale review must promptly return `decision: block` and keep acceptance
+unsatisfied. The agent may perform the visible review stage or report an incomplete handoff
+under the existing cancellation and recovery bounds; neither silence nor exhausted retries
+converts the missing review into success. Do not spawn a model reviewer, wait on
+network/model work, or start a repeated review loop from Stop. Preserve
 the existing distinction between completed, failed, unavailable, interrupted, and stale
 evidence; an interrupted attempt must never count as a pass. Reuse applicable review
 evidence instead of launching a second hidden reviewer for work already covered.
@@ -310,8 +313,12 @@ Recurring worker tasks do not acquire the leader's recovery settings from copied
 The delivery trial must show:
 
 - A plan-only completion does not launch hidden model work after the final answer. With
-  configured native checks already cached, Stop completes within a proposed two-second
-  local allowance and records review as satisfied or explicitly unavailable, never guessed.
+  configured native checks already cached, the Stop hook returns within a proposed
+  two-second local allowance. For required review, each missing, failed, interrupted,
+  unavailable, or stale result returns `decision: block` and prevents verified completion.
+  Review acceptance requires a current completed review with its valid blocking findings
+  resolved; prompt hook return is not task acceptance. An explicitly incomplete handoff
+  preserves the unmet requirement without starting a recursive review loop.
 - A deliberately slow review is visible before completion. User interruption terminates
   its owned child processes; the next message proceeds without a lingering review or lock.
   Test late completion against a newer work interval and prevent stale state overwrite.
