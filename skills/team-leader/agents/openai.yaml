@@ -1,6 +1,6 @@
 interface:
   display_name: "Team Leader"
-  short_description: "Lead recurring workstreams and bounded specialists"
-  default_prompt: "Use $team-leader to coordinate this work through recurring app tasks that own their workstreams and fresh specialists for bounded new jobs, where authorized, and keep me updated here."
+  short_description: "Deliver parallel workstreams through integration"
+  default_prompt: "Use $team-leader to deliver this work through independent owners in authorized worktrees, use focused specialist review, and integrate and verify the result while keeping me updated here."
 policy:
   allow_implicit_invocation: false

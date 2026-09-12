@@ -1,10 +1,26 @@
 # Team leader delivery repair
 
-Status: implemented and locally verified, 12 September 2026. The user authorized both
+Historical status of the first repair: implemented and locally verified, 12 September 2026. The user authorized both
 repairs. Stages 1–3 are complete; the installed team-leader package matches the canonical
 source. The live delivery trial in stage 4 remains unperformed. Quality hooks remain disabled in agent-toolkit and Hydra; their configuration
 files are restored now that cached, unregistered hook invocations are inert. No live
 Hydra assignment, roster or heartbeat is changed by this source repair.
+
+## Subsequent delivery overhaul
+
+The first repair below did not establish efficient delivery. The subsequent overhaul
+replaces its orchestration-only design: independent implementation workstreams use
+authorized worktrees, each owner completes implementation through tested commits, and
+the leader directly owns integration, combined checks and small closing repairs.
+The skill now explicitly preserves earlier worktree authorization, avoids repeated
+status coordination, and uses focused review of the combined candidate. The completion
+helper's continuation prompt follows that role; its durable roster format and recovery
+semantics are unchanged. Recovery is explicitly not a hard spending or worker-stop limit.
+
+The source overhaul does not resume Hydra, change its worktrees/roster/heartbeat, or
+establish a successful live delivery trial. The qualification procedure is in
+`skills/team-leader/references/completion.md`. The earlier design and evidence below
+are historical, not instructions to retain the superseded orchestration restriction.
 
 ## Outcome and scope
 

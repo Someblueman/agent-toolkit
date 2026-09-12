@@ -34,7 +34,7 @@ pending real-work pilots.
 
 | Name | Source | Installation |
 |---|---|---|
-| team-leader | `skills/team-leader/` | Selected for Codex; uses recurring app-task workstream owners, bounded specialist subagents, and one leader recovery heartbeat. |
+| team-leader | `skills/team-leader/` | Selected for Codex; uses independent workstream owners in authorized worktrees, focused specialists, leader-owned integration, and one recovery heartbeat. |
 | teamwork-preview | `skills/teamwork-preview/` | Selected for Codex; imported from the existing personal installation on 2026-09-04 without changing behavior. |
 | workflow | `skills/workflow/` | Selected for Codex; imported from the existing personal installation on 2026-09-04 without changing behavior. Requires the external `afk` CLI. |
 

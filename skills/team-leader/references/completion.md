@@ -3,9 +3,9 @@
 Use this for hands-off execution of an authorized assignment. The normal endpoint
 is verified task-owned commits, plus integration where already authorized. Infer
 acceptance from the selected roadmap item; do not make the user write a work plan.
-Recovery preserves the leader's orchestration role: delegate project changes and
-integration, inspect returned evidence, and keep ownership and follow-up current.
-An unfinished assignment does not authorize the leader to become an implementer.
+Recovery preserves delivery ownership: continue workstreams through their owners,
+inspect returned evidence, and finish authorized integration and closing repairs.
+It does not create a new assignment or additional publication authority.
 
 ## One roster
 
@@ -19,7 +19,7 @@ roster. Upgrade an existing roster in place; retain its decisions and task ident
   "thread_id": "actual-leader-thread-id",
   "objective": "Selected roadmap item and authorized integration endpoint",
   "status": "active",
-  "next_action": "Inspect the returned worker diff and delegate its missing CLI case",
+  "next_action": "Inspect the returned commit and integrate it into the authorized destination",
   "progress": "Actual worker commit/test result or observed state change",
   "waiting_on": [],
   "deadline": 1800000000,
@@ -119,15 +119,18 @@ coordinator. Use a clear prompt equivalent to:
 > Run `python3 [installed completion.py] check [leader-thread-id]`. If the check
 > exits nonzero or does not return `decision: block`, pause this heartbeat and
 > report completion, the concrete blocker, or the exhausted recovery bound accurately.
-> Otherwise reconcile actual worker states and Git, coordinate the next authorized
-> step, consume worker handoffs, and delegate repairs, checks, commits and integration
-> through the recorded endpoint. Personally inspect returned diffs and evidence.
+> Otherwise reconcile actual worker states and Git, consume handoffs and finish the
+> next authorized delivery step. Personally inspect diffs and evidence, integrate
+> verified work, resolve small closing repairs and check the combined result.
 > Route related implementation, tests, repairs and commits back to the recorded app-task
 > workstream owner. Use fresh specialists for bounded new jobs; continue the same specialist
 > for that job's repair. Do not replace an owner because a turn or slice finished.
 > On a capacity failure, record the operation and reconcile live state; retry only after
 > a meaningful capacity/worker change. Do not assume another tool has spare quota.
-> Do not implement project changes yourself or duplicate an active writer.
+> Do not duplicate an active writer. Preserve each owner's authorized worktree and
+> base; do not collapse parallel work into a shared checkout. Send follow-ups only
+> for concrete dependencies, defects or changed requirements. On usage exhaustion,
+> pause recovery and preserve partial work; do not keep scheduling retries.
 > Keep the roster current. Do not launch duplicate workers,
 > new roadmap items, or publish. Pause this heartbeat when complete, blocked, or
 > paused. Do not reset recovery counters or extend the deadline automatically.
@@ -166,8 +169,30 @@ failures may prevent execution; do not promise automatic recovery from all of th
 ## Prove the cycle
 
 Trial against one existing assignment. Observe a real incomplete handoff, the
-leader's concrete repair or integration dispatch, the returned result, and its
+leader's concrete repair or integration action, the returned result, and its
 verification without another user nudge. Also verify clean completion stops,
 unregistered worker threads are untouched, and interruption/no-progress bounds stop
 recovery. Report adapter tests, actual Stop execution, scheduled heartbeat execution,
 and feature acceptance separately; none substitutes for the others.
+
+## Limits and live qualification
+
+The deadline is checked only when this adapter runs. A running worker is not stopped
+by it, and a scheduler can still attempt delivery while the model is unavailable.
+The no-progress counter trusts roster text and observed `waiting_on` IDs; it is not
+a work-quality or cost detector. Refresh those IDs from actual runtime state. Never
+rewrite progress merely to reset the counter. There is no enforced token budget.
+Give workers the same stop time and require bounded commands and a preserved handoff
+at expiry. Pause the owned heartbeat when possible; report any inability to stop
+running work. Do not claim that pausing recovery cancels workers.
+
+A source/adapter test pass is not delivery qualification. Before claiming this workflow
+is reliable, use an authorized small representative assignment with independent
+worktrees and an actual shared integration requirement. Record elapsed time, owner
+identities, available leader/worker usage (including cache accounting limitations),
+coordination calls, accepted commits and combined behavioral checks. Observe a real
+repair, completion without another user nudge, and recovery pause. Exercise cancellation
+and exhausted bounds separately. Judge whether delegation reduced user coordination
+without disproportionate overhead; do not infer that from test counts. A simulation
+or document review alone cannot establish this. Do not resume an old campaign or launch
+a costly trial solely because the skill source was updated.
