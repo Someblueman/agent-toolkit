@@ -1,0 +1,3 @@
+interface:
+  display_name: "Fanout"
+  short_description: "Delegate parallel reviews to Agy or OpenCode"

@@ -21,6 +21,23 @@ class CanonicalPackages(unittest.TestCase):
                     check=False,
                 )
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            home = Path(destination)
+            self.assertEqual(
+                (home / "skills/fanout/SKILL.md").read_bytes(),
+                (installer.parents[1] / "skills/fanout/SKILL.md").read_bytes(),
+            )
+            toolkit = Path((home / "agent-toolkit-root.txt").read_text().strip())
+            self.assertEqual(toolkit, installer.parents[1])
+            result = subprocess.run(
+                [str(toolkit / "tools/fanout/bin/fanout"), "--help"],
+                cwd=destination,
+                text=True,
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("--harness", result.stdout)
 
 
 if __name__ == "__main__":

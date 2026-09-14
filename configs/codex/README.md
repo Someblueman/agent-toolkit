@@ -7,6 +7,9 @@ Wires the shared toolkit into OpenAI Codex.
 1. Installs [AGENTS.md](AGENTS.md) as `~/.codex/AGENTS.md`.
 2. Installs skills selected in `skills.txt` under `~/.codex/skills/<name>/` (real directories copied from the repo). Every name resolves to one complete package at `skills/<name>/` in the repo root.
 3. Installs per-skill Codex metadata (`openai.yaml` interface manifests) at `~/.codex/skills/<name>/agents/openai.yaml` so Codex's skill picker can show a display name and short description.
+4. Records this checkout's absolute path in `~/.codex/agent-toolkit-root.txt` so installed
+   skills can locate standalone toolkit tools. This file has the same ownership and
+   local-edit protection as other installed items. Rerun the installer after moving the checkout.
 
 ## Layout
 
@@ -34,7 +37,7 @@ The installer compares complete skill content, including interface metadata and 
 
 Inspect a conflict before using `--force`, which replaces conflicting selected items. `--prune` removes only retired items in the ownership record; an edited retired item requires `--force`. Items without an ownership record are never inferred to be obsolete. System skills, plugin caches, and other independent installations are outside this installer's ownership. Do not run concurrent installers for one destination.
 
-The selected list includes the user-requested `code-simplification`, `hardware-aware-optimization`, and `profiling-software-performance` drafts. Installation does not establish their behavioral correctness or install optional profiling/compiler dependencies. `fanout` remains excluded because its standalone tool is not installed by this adapter.
+The selected list includes the user-requested `code-simplification`, `hardware-aware-optimization`, and `profiling-software-performance` drafts. Installation does not establish their behavioral correctness or install optional profiling/compiler dependencies. `fanout` is also selected; it locates the standalone tool in this checkout through `agent-toolkit-root.txt`. Agy or OpenCode must be installed and authenticated separately.
 
 The anti-bloat script lives at `skills/pragmatic-engineering/scripts/check_anti_bloat.py` and is installed at `~/.codex/scripts/check_anti_bloat.py` for convenience.
 

@@ -36,6 +36,7 @@ def fingerprint(path: Path) -> str | None:
 def valid_target(name: str) -> bool:
     return name in {
         "AGENTS.md",
+        "agent-toolkit-root.txt",
         "scripts/check_anti_bloat.py",
         "scripts/test_check_anti_bloat.py",
     } or (name.startswith("skills/") and NAME.fullmatch(name[7:]) is not None)
@@ -91,6 +92,9 @@ def stage_content(stage: Path) -> dict[str, Path]:
         if name.startswith("scripts/"):
             target.chmod(target.stat().st_mode | 0o111)
         sources[name] = target
+    toolkit_root = stage / "agent-toolkit-root.txt"
+    toolkit_root.write_text(str(REPO) + "\n")
+    sources[toolkit_root.name] = toolkit_root
     return sources
 
 

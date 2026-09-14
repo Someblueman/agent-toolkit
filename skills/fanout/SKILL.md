@@ -17,7 +17,16 @@ Load this skill whenever:
 
 ## Command syntax
 
-Resolve the loaded skill directory through symlinks and set `TOOLKIT_ROOT` to its toolkit checkout (two parents above `skills/fanout`). If installed as a detached copy, require an explicit toolkit location. Verify the executable exists; do not assume the target repository contains it. Schema-valid receipts establish structure, not grounded evidence; independently inspect cited files and commands.
+Resolve the loaded skill directory through symlinks. In the toolkit checkout, set
+`TOOLKIT_ROOT` to two parents above `skills/fanout`. For a Codex-installed copy, read
+`agent-toolkit-root.txt` in the Codex home (two parents above the loaded skill directory)
+and use its plain-text absolute path as `TOOLKIT_ROOT`; do not execute or source that file.
+For other detached copies, require an explicit toolkit location. Verify
+`$TOOLKIT_ROOT/tools/fanout/bin/fanout` exists and is executable before dispatching.
+If the checkout moved, rerun its installer to refresh the location. The selected harness
+(Agy or OpenCode) must also be installed and authenticated; skill installation does not
+provision it. Do not assume the target repository contains the tool. Schema-valid receipts
+establish structure, not grounded evidence; independently inspect cited files and commands.
 
 ```sh
 "$TOOLKIT_ROOT/tools/fanout/bin/fanout" <prompt_file> \

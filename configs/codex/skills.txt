@@ -1,6 +1,7 @@
 c-engineering
 code-simplification
 define-goal
+fanout
 go-engineering
 hardware-aware-optimization
 haskell

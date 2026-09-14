@@ -39,7 +39,7 @@ pending real-work pilots.
 | workflow | `skills/workflow/` | Selected for Codex; imported from the existing personal installation on 2026-09-04 without changing behavior. Requires the external `afk` CLI. |
 
 All packages, including their optional agent metadata, live under `skills/`.
-`configs/codex/skills.txt` is the explicit Codex selection. The user requested installation of the three draft skills (`code-simplification`, `hardware-aware-optimization`, and `profiling-software-performance`); their draft status remains unchanged. `fanout` is available in the repository but is not installed into Codex by default.
+`configs/codex/skills.txt` is the explicit Codex selection. The user requested installation of the three draft skills (`code-simplification`, `hardware-aware-optimization`, and `profiling-software-performance`); their draft status remains unchanged. `fanout` is selected for Codex and uses the installer-managed `agent-toolkit-root.txt` to locate its standalone tool in this checkout.
 
 ## External skill ownership
 

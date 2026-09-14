@@ -77,6 +77,17 @@ class InstallTest(unittest.TestCase):
         self.run_cli("--force")
         self.assertEqual(skill.read_text(), "example\n")
 
+    def test_toolkit_location_is_recorded_and_local_edits_are_protected(self):
+        self.run_cli()
+        location = self.home / "agent-toolkit-root.txt"
+        self.assertEqual(location.read_text(), str(self.repo.resolve()) + "\n")
+        self.run_cli()
+        self.run_cli("--check")
+        location.write_text("/local/override\n")
+        self.run_cli(code=1)
+        self.run_cli("--check", code=1)
+        self.assertEqual(location.read_text(), "/local/override\n")
+
     def test_prune_preserves_unmanaged_and_edited_managed_content(self):
         self.run_cli()
         unrelated = self.home / "skills/unrelated"
