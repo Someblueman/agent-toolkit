@@ -7,8 +7,9 @@ by this planning request. Saving or committing this document does not approve th
 ## Outcome and decisions
 
 Let a calling agent turn requests such as “fanout review this plan”, “fanout implement
-these changes”, or “fanout hunt bugs here” into an explicit team with suitable models,
-distinct assignments, evidence requirements, and bounded execution.
+these changes”, “fanout hunt bugs here”, or “get constructive criticism of my work”
+into an explicit team with suitable models, distinct assignments, evidence requirements,
+and bounded execution.
 
 User-agreed direction:
 
@@ -16,6 +17,8 @@ User-agreed direction:
   stronger models for plan review and a mixture for bug hunting.
 - Implementation means several workers implement separate owned parts, rather than
   only advising the caller or appointing one implementation worker.
+- Constructive criticism should use strong models to give actionable feedback directly
+  to the agent that invoked fanout, helping that agent improve its current work.
 
 Everything below is a recommendation unless marked as verified current behavior.
 Exact rosters, routes, limits, and configuration syntax remain proposed.
@@ -62,6 +65,7 @@ Do not build a general graph scheduler, recursive agent team, or autonomous repa
 | `review-plan` | Agy / Gemini 3.8 Flash High challenges architecture and assumptions; Claude Code / Fable challenges feasibility, missing requirements, and verification | Independent reviews of the same plan and relevant source; each reviewer also reports any critical issue outside its assigned focus | Concrete gaps tied to plan sections or source, consequences, proposed revisions, unresolved assumptions, and disagreement preserved |
 | `implement` | Allocate independent work items across Pi / DeepSeek Flash and Claude Code / a configured medium-cost model; allocate according to coupling and risk, not random assignment | Each worker receives one owned work item, its own checkout, acceptance checks, and a shared interface agreement | Task-owned diff/commit, actual checks and results, remaining blockers; caller subsequently verifies the integrated result |
 | `bug-hunt` | Pi / DeepSeek traces code paths and coverage; Agy / Gemini High probes boundary cases; Claude Code / Fable examines suspected causes and counterexamples | Independent hypotheses with deliberately different focus; findings must distinguish observation, reproduction, and inference | File/line or stable symbol, trigger, expected/actual behavior, reproduction or explicit evidence gap; caller verifies and deduplicates |
+| `critique` | Agy / Gemini 3.8 Flash High challenges assumptions and alternatives; Claude Code / Fable examines usefulness, clarity, completeness, and concrete improvements | Strong models advise the calling agent on its current answer, design, code, or approach; feedback addresses the user's objective and preserves sound work | Specific strengths to retain, prioritized concerns with evidence and suggested improvements, tradeoffs, and uncertainties; caller records its response and verifies any revisions |
 
 These are starting hypotheses for qualification, not model rankings. Keep the model mix
 editable without rewriting role instructions. Pin explicit routes in shipped workflows;
@@ -77,6 +81,40 @@ For bug hunting, a review round can complete with no verified bugs or unresolved
 finding a bug is not required for a successful run. For plan review, completing the
 review is distinct from approving the plan. Agreement between workers never proves a claim.
 
+### Constructive criticism returned to the calling agent
+
+Route “constructive criticism”, “critique my approach”, and “get stronger-model feedback”
+to `critique`. Use `review-plan` for the narrower question of a plan's readiness for
+execution. Critique can also apply to a draft answer, partial implementation, proposed
+decision, or synthesis from an earlier fanout run; it does not require a plan document.
+
+The caller supplies the user's objective and constraints, the actual work being critiqued,
+relevant evidence, a concise explanation of its choices, and any specific uncertainty.
+Critics receive the same material independently. They cannot assume access to the calling
+agent's conversation or infer unseen work from its self-description. Missing material
+must be identified, not replaced with invented context.
+
+Return structured feedback addressed to the caller: `strengths` worth preserving,
+`improvements` with priority, target passage/file/decision, observation, rationale or
+evidence, a concrete suggested change and its tradeoff, plus `uncertainties`. Distinguish
+required corrections from optional suggestions. No quota of criticisms or praise;
+empty lists are valid when justified. Evaluate the work against its purpose, not a
+generic preference for more complexity, more tests, or more process.
+
+The caller reads the critique packet before its next revision or final response. For
+each material suggestion it records accept, reject, or defer with a short reason; it
+checks claims and applies accepted improvements within its existing authorization.
+Suggestions do not expand task scope or grant permission to edit, publish, or change
+policy. For read-only work, return recommendations rather than applying edits.
+The user sees the consequential improvements and unresolved disagreements, without
+requiring a transcript of the exchange. Preserve the detailed disposition with the run
+artifacts so feedback consumption is reviewable.
+
+Require both proposed critic roles for full coverage, while retaining partial feedback
+when one fails. Separate critique delivery from the caller's subsequent revision and
+verification. Default to one critique round. Do not loop until both models approve,
+allow recursive fanout, or transfer final responsibility to a critic.
+
 ## Product surface and configuration
 
 Natural language remains the main entry point through `skills/fanout/SKILL.md`:
@@ -86,6 +124,9 @@ Natural language remains the main entry point through `skills/fanout/SKILL.md`:
 > “Use fanout to implement this approved plan across separate owned parts.”
 >
 > “Use fanout to hunt bugs in the retry and cancellation paths.”
+>
+> “Get constructive criticism from strong models on your current approach, then use
+> that feedback to improve it.”
 
 Proposed CLI, retaining the existing invocation form:
 
@@ -93,6 +134,7 @@ Proposed CLI, retaining the existing invocation form:
 tools/fanout/bin/fanout request.md --workflow review-plan --describe
 tools/fanout/bin/fanout request.md --workflow review-plan --output /tmp/plan-review
 tools/fanout/bin/fanout request.md --workflow bug-hunt --output /tmp/bug-hunt
+tools/fanout/bin/fanout critique-context.md --workflow critique --output /tmp/critique
 tools/fanout/bin/fanout request.md --workflow implement \
   --assignments /tmp/owned-work.json --output /tmp/implementation
 ```
@@ -133,8 +175,8 @@ Unsupported model/effort combinations fail clearly; do not silently discard opti
 fall back to another model. Keep bounded native retries visible; never automatically
 resubmit a mutation-capable task after transport ambiguity.
 
-Bind reviews to the same plan bytes and repository revision/dirty-state identity. If
-inputs change during a round, record that the reports cover different inputs and do not
+Bind reviews to the same target artifact bytes and repository revision/dirty-state identity
+where applicable. If inputs change during a round, record the different inputs and do not
 present them as one coherent review. Qualify native effort forwarding without changing
 the user's persistent model/effort settings; reject unsupported ephemeral selection.
 
@@ -160,8 +202,9 @@ Bound spend operationally through a visible finite roster and deadlines.
 Completion rules follow required roles/assignments, not just a count. For `review-plan`,
 both distinct review roles are required; two reports from one route cannot satisfy the
 other. Implementation requires every assigned item. Bug-hunt requires its configured
-perspectives. Retain partial reports and explicit missing coverage when any required role
-fails. Never label a transport failure as “no issues found” or substitute a cheaper route.
+perspectives; critique requires both critic roles. Retain partial reports and explicit
+missing coverage when any required role fails. Never label a transport failure as
+“no issues found” or substitute a cheaper route.
 
 The caller produces the human synthesis: verified findings, disagreements, uncertainties,
 and next actions. Do not add a paid judge by default. A stronger follow-up is justified
@@ -200,10 +243,12 @@ must not announce feature completion before integration and final verification s
    Prove different executable/model/assignment routes in one run, a shared concurrency cap,
    retained sibling reports on failure, timeout/cancellation cleanup, and unchanged plain
    v3 behavior. Use the existing subprocess fixtures rather than a second simulated runner.
-2. **Review recipes and discovery.** Add `review-plan`, `bug-hunt`, recipe validation,
+2. **Review recipes and discovery.** Add `review-plan`, `bug-hunt`, `critique`, recipe validation,
    description output, role prompts, and skill routing. Prove invalid/unknown fields fail
    before dispatch, describe performs no launches/writes, missing roles fail completion,
    and model failures cannot become substitutions or false clean reviews.
+   For critique, validate actionable feedback fields and permit justified empty lists;
+   prove feedback from both critics and their disagreement survive packet ingestion.
 3. **Owned implementation.** Add assignment validation and ownership evidence. Exercise
    two workers making disjoint changes in authorized temporary checkouts; reject duplicate
    checkouts, overlapping ownership, and missing dependency prerequisites. Detect an
@@ -212,8 +257,12 @@ must not announce feature completion before integration and final verification s
 4. **Qualify recipes and install.** Run affected suites and repository checks. In a bounded,
    separately authorized live trial, review a plan with seeded consequential omissions;
    hunt a reproduced defect plus a plausible false lead; deliver two real independent
-   implementation items through integration. Compare verified coverage, false positives,
-   useful changes, latency, and available cost against plain fanout. These small trials
+   implementation items through integration; and critique a draft containing a real gap
+   alongside a sound decision that should be preserved. Observe the calling agent consume
+   the packet, make an evidenced correction, preserve sound work, and explain any rejected
+   suggestion. Also verify missing context is surfaced and no second round starts implicitly.
+   Compare verified coverage, false positives, useful changes, latency, and available
+   cost against plain fanout. These small trials
    qualify usability, not a universal model ranking. Refresh the installed skill through
    the normal installer and pass its read-only comparison.
 
