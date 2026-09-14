@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "role": "investigator",
+  "timeout_seconds": 300,
+  "prompt": "bug-hunt.md",
+  "schema": "../schemas/bug-hunt.json"
+}

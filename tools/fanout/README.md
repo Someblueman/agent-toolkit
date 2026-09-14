@@ -4,6 +4,15 @@
 
 ---
 
+## Named workflows
+
+Run `--workflow review-plan`, `critique`, `bug-hunt`, or `implement` with independently
+configurable model rosters. See the canonical [workflow guide](../../skills/fanout/references/workflows.md)
+for commands, user configuration, evidence contracts, and owned worktree assignments.
+Use `--describe` to inspect the resolved roster without launching workers. Adding a model
+in an existing harness requires only a roster entry. Workflow packets are version 4;
+the plain commands documented below keep version 3.
+
 ## Architecture
 
 The diagram shows the Agy and OpenCode paths. Muse, Pi, and Claude Code use the shared single-attempt
@@ -39,6 +48,10 @@ process runner directly through its headless CLI.
 ```
 
 The tool is structured into three primary subdirectories:
+- `lib/harnesses.py`: Shared native dispatch for plain and workflow runs.
+- `lib/workflow_config.py`: Canonical recipes, roster resolution, and payload validation.
+- `lib/workflow_engine.py`: Mixed-worker rounds, source identity, and version-4 packets.
+- `lib/workflow_ownership.py`: Assignment validation and Git ownership evidence.
 - `bin/fanout`: Executable CLI entry point (`chmod +x`). Handles option parsing, semaphore-bounded scheduling, signal traps, subprocess execution, and atomic packet writing.
 - `lib/claude_worker.py`: Claude Code print-mode dispatch and structured-result validation.
 - `lib/pi_worker.py`: Pi CLI dispatch and terminal-event receipt parsing.

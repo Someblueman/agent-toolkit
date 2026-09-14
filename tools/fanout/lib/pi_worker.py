@@ -15,7 +15,7 @@ from structured_worker import (
 
 
 def parse_pi_output(
-    stdout: bytes, worker_id: str
+    stdout: bytes, worker_id: str, direct_payload: bool = False
 ) -> tuple[dict[str, Any] | None, Any, str | None]:
     try:
         terminal = None
@@ -49,7 +49,7 @@ def parse_pi_output(
         ):
             raise TypeError("Invalid Pi message content")
         text = "".join(part["text"] for part in content if part.get("type") == "text")
-        result, error = validate_receipt(json.loads(text), worker_id)
+        result, error = validate_receipt(json.loads(text), worker_id, direct_payload)
         usage = {"total_tokens": 0, "cost": 0.0}
         for message in messages:
             if isinstance(message, dict) and message.get("role") == "assistant":
@@ -72,17 +72,23 @@ async def run_pi_worker(
     output: Path,
     timeout_seconds: float,
     max_output_bytes: int,
+    payload_schema: dict | None = None,
+    effort: str | None = None,
 ) -> dict[str, Any]:
     worker_id = f"worker-{index:04d}"
-    prompt_path = write_worker_prompt(output, worker_id, base_prompt)
+    prompt_path = write_worker_prompt(output, worker_id, base_prompt, payload_schema)
     command = [executable_path, "--mode", "json", "--print", "--no-session"]
     if model is not None:
         command.extend(["--model", model])
+    if effort is not None:
+        command.extend(["--thinking", effort])
     command.extend(["--", f"@{prompt_path}"])
     return await run_structured_worker(
         worker_id=worker_id,
         command=command,
-        parse_output=parse_pi_output,
+        parse_output=lambda stdout, worker: parse_pi_output(
+            stdout, worker, payload_schema is not None
+        ),
         semaphore=semaphore,
         working_directory=working_directory,
         output=output,

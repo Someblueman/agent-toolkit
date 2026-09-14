@@ -1,8 +1,9 @@
 # Named fanout workflows
 
-Status: design proposal, 14 September 2026. Planning and this document are authorized;
-implementation, worker dispatch, worktree creation, and publication are not authorized
-by this planning request. Saving or committing this document does not approve the design.
+Status: implemented, 14 September 2026, following the user's request to implement this
+plan end to end. The CLI, canonical skill package, installer refresh, automated checks,
+and bounded live trials are complete. Provider qualification has the specific limits
+recorded in [delivery evidence](../fanout-workflows-validation-20260914.md).
 
 ## Outcome and decisions
 
@@ -22,22 +23,22 @@ User-agreed direction:
 - Workflows must be model-agnostic. Users must be able to add, replace, or remove models
   through configuration, including adding a future GLM-5.3 reviewer without code or prompt edits.
 
-Everything below is a recommendation unless marked as verified current behavior.
-Exact rosters, routes, limits, and configuration syntax remain proposed.
+The sections below record the delivered design and its operating contract.
+The [workflow guide](../../skills/fanout/references/workflows.md) is the usage reference.
 
-Recommend model-agnostic workflow recipes over the existing fanout executor. A workflow
+Use model-agnostic workflow recipes over the existing fanout executor. A workflow
 defines purpose, roles, expected evidence, and the caller's handoff procedure. A separate
 configurable roster assigns those roles to harnesses and models. The executor
 runs one bounded round of independently assigned workers. The calling agent handles
 decomposition, verification, integration, and any explicitly requested next round.
 Do not build a general graph scheduler, recursive agent team, or autonomous repair loop.
 
-## Verified current behavior
+## Starting contracts preserved or extended
 
 - `tools/fanout/bin/fanout` selects one harness/model/prompt/working directory for an
   entire invocation; defaults are four workers, concurrency four, all results required.
-  Its separate harness branches construct otherwise similar worker calls. It does not
-  currently support a mixed roster or individual work assignments.
+  That plain invocation remains available. Workflow mode now resolves a mixed roster
+  or individual work assignments through shared native dispatch.
 - Agy runs in plan/sandbox mode and returns bounded string findings/uncertainties.
   OpenCode, Muse, Pi, and Claude Code use a completed/blocked/failed receipt with a
   task-specific JSON object. Merely changing model defaults cannot make these contracts
@@ -61,7 +62,7 @@ Do not build a general graph scheduler, recursive agent team, or autonomous repa
   settings. Even read-oriented tasks can create files through tools or plugins. Claude
   print mode also skips native workspace trust prompts.
 
-## Proposed workflows
+## Delivered workflows
 
 | Workflow | Model-independent assignments | What makes it distinct | Completion evidence |
 | --- | --- | --- | --- |
@@ -72,13 +73,14 @@ Do not build a general graph scheduler, recursive agent team, or autonomous repa
 
 Ship editable starter rosters: Gemini High plus Claude Fable for plan review and critique;
 a DeepSeek/Gemini/Claude mix for bug hunting; a DeepSeek and medium-cost Claude pool for
-implementation. These are initial configuration proposals, not required model families or
+implementation. These are editable starter defaults, not required model families or
 proven rankings. Any supported harness/model can fill the appropriate workflow role.
 An added reviewer gets the workflow's complete review instructions automatically; a focus
 is optional and does not require inventing a new role or updating a prompt template.
 
 Keep explicit model routes in roster data. Record requested aliases and observed models
-when available. Exact starter Claude routes still need qualification. Model names must
+when available. Live trials observed `claude-fable-5-1` and the `sonnet` alias resolving
+to `claude-sonnet-5`; provider availability is not guaranteed. Model names must
 not appear in workflow logic, result schemas, completion rules, or role prompts.
 
 Do not route two workers through Pi and OpenCode to the same DeepSeek model and describe
@@ -144,7 +146,7 @@ The last request edits the selected user roster configuration, preserving other 
 and workflows. It does not alter workflow instructions or launch a review. Resolve an
 ambiguous provider route before saving it; do not guess an endpoint or provision credentials.
 
-Proposed CLI, retaining the existing invocation form:
+CLI, retaining the existing invocation form:
 
 ```sh
 tools/fanout/bin/fanout request.md --workflow review-plan --describe
@@ -168,7 +170,7 @@ under `skills/fanout/`, but as separate files. The tool reads those canonical so
 its known toolkit root. Installed copies remain installer outputs. User roster configuration
 lives outside the package and must survive toolkit updates without being overwritten.
 
-Proposed user file: `${XDG_CONFIG_HOME:-~/.config}/agent-toolkit/fanout.json`, resolving
+User file: `${XDG_CONFIG_HOME:-~/.config}/agent-toolkit/fanout.json`, resolving
 `~` as the user's home, not as literal text. `--config /path/to/fanout.json` selects an
 alternative complete user configuration instead of that default path. Do not stack both
 files or automatically discover repository-local configuration.
@@ -247,7 +249,12 @@ where applicable. If inputs change during a round, record the different inputs a
 present them as one coherent review. Qualify native effort forwarding without changing
 the user's persistent model/effort settings; reject unsupported ephemeral selection.
 
-Workflow mode needs a common structured receipt across all harnesses, including Agy.
+Workflow mode uses a common structured receipt across all harnesses, including Agy:
+`worker_id`, `outcome`, `summary`, and a direct `payload` object. Plain mode retains its
+existing receipt shapes. Live qualification exposed escaped JSON-string failures, so
+workflow receipts deliberately avoid JSON inside a string; there is no fallback decoder.
+The workflow stdout/stderr acceptance threshold is 8 MB, compared with plain mode's
+unchanged 1 MB, because native incremental JSON events can exceed 1 MB for a valid report.
 Supply Agy a workflow receipt schema in that mode; do not infer structured evidence by
 parsing its existing free-form findings strings. Validate each workflow's payload fields
 after the outer receipt, including worker identity and outcome. Native adapters should
@@ -312,7 +319,7 @@ combined acceptance checks. Reviewers examine a stable integrated candidate afte
 finish. An implementation fanout packet means assigned work was delivered; the caller
 must not announce feature completion before integration and final verification succeed.
 
-## Cohesive delivery stages and proposed acceptance
+## Delivery stages and acceptance criteria
 
 1. **Mixed worker dispatch and receipt contract.** Replace homogeneous internal construction
    with resolved worker specifications; add Agy workflow receipts and v4 serialization.
@@ -337,8 +344,7 @@ must not announce feature completion before integration and final verification s
    checkouts, overlapping ownership, and missing dependency prerequisites. Detect an
    out-of-scope edit including an untracked file. Demonstrate caller integration and a
    combined check that can catch incompatible individually passing changes.
-4. **Qualify recipes and install.** Run affected suites and repository checks. In a bounded,
-   separately authorized live trial, review a plan with seeded consequential omissions;
+4. **Qualify recipes and install.** Run affected suites and repository checks. In the authorized bounded live trials, review a plan with seeded consequential omissions;
    hunt a reproduced defect plus a plausible false lead; deliver two real independent
    implementation items through integration; and critique a draft containing a real gap
    alongside a sound decision that should be preserved. Observe the calling agent consume
@@ -352,21 +358,28 @@ must not announce feature completion before integration and final verification s
    Refresh the installed skill through
    the normal installer and pass its read-only comparison.
 
-No trials or workflow implementation have been executed as part of this design request.
+All four stages are implemented. Full repository quality checks passed, including 89
+fanout tests, real subprocess concurrency/cancellation tests, temporary Git ownership and
+integration checks, and repeated temporary installation preserving user configuration.
+The normal Codex installation was refreshed and its read-only comparison passed.
+See [delivery evidence](../fanout-workflows-validation-20260914.md) for live packets,
+caller critique dispositions and revisions, integration checks, and provider failures.
 
-## Remaining decisions and handoff
+## Boundaries and follow-up
 
-- Model-agnostic configuration is agreed. The proposed user file format, replacement
-  precedence, and starter rosters need qualification; exact starter Claude routes are
-  operational defaults rather than workflow requirements. Future GLM support depends
-  only on an available route in a supported harness, not a workflow redesign.
-- Recommend all-resolved-worker completion, caller-owned synthesis, and caller-owned
-  checkout preparation/integration. A fully unattended multistage workflow engine is a
-  separate scope decision, not implied by named fanout workflows.
-- No workflow-wide price ceiling has been specified. Keep limits explicit and costs
-  observational until a real common enforcement mechanism exists.
+- Models and their availability remain provider concerns. Agy hit account quota during
+  final receipt qualification; OpenCode produced one valid and one malformed final-format
+  plan-review report. Partial coverage remained explicit. No silent substitution occurs.
+- Workflow completion requires all resolved workers. Synthesis, worktree preparation,
+  integration, and verification remain the calling agent's responsibility. A fully
+  unattended multistage engine is outside this change.
+- No workflow-wide price ceiling is enforced. Costs are observed native estimates and
+  can be partial; finite worker counts, deadlines, and output acceptance limits bound runs.
+- Filesystem checks compare endpoints and preserve violations for inspection. They are
+  not an OS sandbox and do not cover transient reverted edits, Git metadata, or external
+  side effects. Implementation rejects symlinks and submodules.
+- Future GLM support needs an available native route and a roster entry. No workflow
+  redesign, prompt edit, or schema change is required.
 
-Working repository: `/Users/sws/Code/agent-toolkit`. Only this plan is task-owned in the
-planning iteration. Other quality-hook work appeared concurrently; preserve it and stage
-only this document. No runner, app task, agent, or automation should start from this plan
-until the user authorizes implementation or a concrete trial.
+Working repository: `/Users/sws/Code/agent-toolkit`. This implementation is committed
+under repository policy; pushing remains a separate explicit user action.

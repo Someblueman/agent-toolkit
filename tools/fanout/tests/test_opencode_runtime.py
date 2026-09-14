@@ -39,7 +39,7 @@ class OpenCodeRuntime(BaseFanoutTestCase):
             args = fanout.parse_args()
         with (
             mock.patch.object(
-                fanout,
+                sys.modules["harnesses"],
                 "available_tcp_port",
                 side_effect=[PermissionError(1, "Operation not permitted"), 12345],
             ),

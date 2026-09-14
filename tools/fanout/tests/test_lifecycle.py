@@ -51,7 +51,8 @@ class TestProcessLifecycle(BaseFanoutTestCase):
 
     def test_cancelling_async_worker_terminates_child_process_group(self) -> None:
         """Unit test for asyncio task cancellation terminating the child process group."""
-        fanout_mod = load_fanout_module()
+        load_fanout_module()
+        fanout_mod = sys.modules["harnesses"]
         output = self.root / "cancelled_async"
         output.mkdir(parents=True, exist_ok=True)
         pid_path = self.root / "fake-agy.pid"

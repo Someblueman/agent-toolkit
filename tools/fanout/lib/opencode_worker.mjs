@@ -6,7 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 const { values } = parseArgs({
   options: Object.fromEntries(
-    ["sdk", "directory", "port", "model", "agent", "worker-id", "prompt"].map(
+    ["sdk", "directory", "port", "model", "agent", "worker-id", "prompt", "receipt-key"].map(
       (name) => [name, { type: "string" }],
     ),
   ),
@@ -51,7 +51,7 @@ try {
   checked(await client.session.promptAsync({
     sessionID, directory: values.directory, agent: values.agent, model,
     parts: [{ type: "text", text:
-      `${values.prompt.trim()}\n\nFan-out response contract: return only one JSON object ` +
+      values["receipt-key"] === "payload" ? values.prompt : `${values.prompt.trim()}\n\nFan-out response contract: return only one JSON object ` +
       "without Markdown fences, with exactly worker_id, outcome, summary, result_json. " +
       `Your worker_id is ${values["worker-id"]}. ` +
       "outcome must be completed, blocked, or failed. summary must be a non-empty string " +
@@ -97,6 +97,8 @@ try {
           }, { cost: 0, tokens: 0 });
         process.stdout.write(`${JSON.stringify({
           status: "SUCCESS", structured_output: receipt, usage, session_id: sessionID,
+          observed_models: assistant.info.providerID && assistant.info.modelID
+            ? [`${assistant.info.providerID}/${assistant.info.modelID}`] : null,
         })}\n`);
         break;
       }

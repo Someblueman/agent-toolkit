@@ -15,7 +15,7 @@ from structured_worker import (
 
 
 def parse_muse_output(
-    stdout: bytes, worker_id: str
+    stdout: bytes, worker_id: str, direct_payload: bool = False
 ) -> tuple[dict[str, Any] | None, Any, str | None]:
     try:
         records = [json.loads(line) for line in stdout.splitlines() if line.strip()]
@@ -49,7 +49,7 @@ def parse_muse_output(
         text = terminal.get("text")
         if not isinstance(text, str):
             raise TypeError("Muse terminal text is missing")
-        result, error = validate_receipt(json.loads(text), worker_id)
+        result, error = validate_receipt(json.loads(text), worker_id, direct_payload)
         return result, None, error
     except (UnicodeDecodeError, ValueError, TypeError) as error:
         return None, None, str(error)
@@ -66,9 +66,10 @@ async def run_muse_worker(
     output: Path,
     timeout_seconds: float,
     max_output_bytes: int,
+    payload_schema: dict | None = None,
 ) -> dict[str, Any]:
     worker_id = f"worker-{index:04d}"
-    prompt_path = write_worker_prompt(output, worker_id, base_prompt)
+    prompt_path = write_worker_prompt(output, worker_id, base_prompt, payload_schema)
     command = [
         executable_path,
         "exec",
@@ -84,7 +85,9 @@ async def run_muse_worker(
     return await run_structured_worker(
         worker_id=worker_id,
         command=command,
-        parse_output=parse_muse_output,
+        parse_output=lambda stdout, worker: parse_muse_output(
+            stdout, worker, payload_schema is not None
+        ),
         semaphore=semaphore,
         working_directory=working_directory,
         output=output,

@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "workflows": {
+    "review-plan": {
+      "members": [
+        {
+          "id": "gemini",
+          "harness": "agy",
+          "model": "gemini-3.8-flash-high",
+          "focus": "Assumptions, architecture, and boundary cases."
+        },
+        {
+          "id": "claude",
+          "harness": "claude",
+          "model": "claude-fable-5-1",
+          "focus": "Feasibility, usefulness, and verification."
+        }
+      ]
+    },
+    "critique": {
+      "members": [
+        {
+          "id": "gemini",
+          "harness": "agy",
+          "model": "gemini-3.8-flash-high",
+          "focus": "Assumptions, architecture, and boundary cases."
+        },
+        {
+          "id": "claude",
+          "harness": "claude",
+          "model": "claude-fable-5-1",
+          "focus": "Feasibility, usefulness, and verification."
+        }
+      ]
+    },
+    "bug-hunt": {
+      "members": [
+        {
+          "id": "deepseek",
+          "harness": "pi",
+          "model": "opencode-go/deepseek-v4.1-flash",
+          "focus": "Code paths, concrete behavior, and reproduction."
+        },
+        {
+          "id": "gemini",
+          "harness": "agy",
+          "model": "gemini-3.8-flash-high",
+          "focus": "Assumptions, architecture, and boundary cases."
+        },
+        {
+          "id": "claude",
+          "harness": "claude",
+          "model": "claude-fable-5-1",
+          "focus": "Feasibility, usefulness, and verification."
+        }
+      ]
+    },
+    "implement": {
+      "members": [
+        {
+          "id": "deepseek",
+          "harness": "pi",
+          "model": "opencode-go/deepseek-v4.1-flash"
+        },
+        {
+          "id": "claude",
+          "harness": "claude",
+          "model": "sonnet"
+        }
+      ]
+    }
+  }
+}

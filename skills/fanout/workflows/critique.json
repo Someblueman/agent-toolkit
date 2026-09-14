@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "role": "critic",
+  "timeout_seconds": 300,
+  "prompt": "critique.md",
+  "schema": "../schemas/critique.json"
+}

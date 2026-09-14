@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "role": "reviewer",
+  "timeout_seconds": 300,
+  "prompt": "review-plan.md",
+  "schema": "../schemas/review-plan.json"
+}

@@ -1,6 +1,6 @@
 ---
 name: fanout
-description: Delegate tasks to bounded concurrent workers via Agy (Gemini), OpenCode (DeepSeek), Muse, Pi, or Claude Code and collect structured results. Load when delegating independent analysis, multi-model reviews, parallel investigations, or consensus checks across external harnesses.
+description: Run model-agnostic fanout workflows for plan review, constructive critique, bug hunting, and owned parallel implementation, or plain bounded workers through Agy, OpenCode, Muse, Pi, and Claude Code. Load for independent external-model feedback, configurable model rosters, or parallel assignments.
 ---
 
 # Fanout Task Delegation
@@ -14,6 +14,23 @@ Load this skill whenever:
 - You want to gather multiple parallel perspectives or consensus checks on code, architecture, or plan proposals.
 - You need to run exploratory code investigations without polluting your current agent context window.
 - You want fault-tolerant multi-worker delegation with explicit K-of-N quorum guarantees.
+
+## Named workflows
+
+For plan review, constructive criticism of your own work, bug hunting, or separately owned
+implementation, use `--workflow review-plan|critique|bug-hunt|implement`. Read
+[workflow instructions](references/workflows.md) for configuration, input context,
+assignment preparation, and result consumption. Model rosters are user-configurable;
+adding a model to an existing harness requires no prompt or code changes.
+
+For critique, return the strong models' feedback to your own next revision: evaluate each
+material suggestion, preserve sound work, and record what you accepted/rejected/deferred.
+For implementation, workers deliver owned changes; you integrate and verify the combined
+result. Neither workflow grants authority beyond the user's task. Do not recursively fan
+out or repeat critique until every model agrees.
+
+The command reference below describes **plain fanout**, which retains packet version 3.
+Named workflows use the version-4 contract described in the linked reference.
 
 ## Command syntax
 

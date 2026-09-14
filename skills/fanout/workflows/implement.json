@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "role": "implementer",
+  "timeout_seconds": 300,
+  "prompt": "implement.md",
+  "schema": "../schemas/implement.json"
+}

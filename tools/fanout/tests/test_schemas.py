@@ -36,7 +36,8 @@ class TestAgySchemaValidation(unittest.TestCase):
     """Unit tests for Agy worker result validation."""
 
     def setUp(self) -> None:
-        self.fanout = load_fanout_module()
+        load_fanout_module()
+        self.fanout = sys.modules["harnesses"]
 
     def test_valid_agy_result_passes(self) -> None:
         valid_result = {
@@ -130,7 +131,8 @@ class TestOpenCodeReceiptValidation(unittest.TestCase):
     """Unit tests for OpenCode universal receipt validation and payload decoding."""
 
     def setUp(self) -> None:
-        self.fanout = load_fanout_module()
+        load_fanout_module()
+        self.fanout = sys.modules["harnesses"]
 
     def test_valid_opencode_receipt_decodes_payload(self) -> None:
         receipt = {

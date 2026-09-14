@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 from structured_worker import (
+    receipt_schema,
     run_structured_worker,
     validate_receipt,
     write_worker_prompt,
@@ -15,7 +17,7 @@ from structured_worker import (
 
 
 def parse_claude_output(
-    stdout: bytes, worker_id: str
+    stdout: bytes, worker_id: str, direct_payload: bool = False
 ) -> tuple[dict[str, Any] | None, Any, str | None]:
     try:
         envelope = json.loads(stdout)
@@ -28,7 +30,9 @@ def parse_claude_output(
             raise ValueError(
                 f"Claude Code did not complete: {envelope.get('errors') or envelope.get('subtype')}"
             )
-        result, error = validate_receipt(envelope.get("structured_output"), worker_id)
+        result, error = validate_receipt(
+            envelope.get("structured_output"), worker_id, direct_payload
+        )
         native_usage = envelope.get("usage")
         usage = {"total_cost_usd": envelope.get("total_cost_usd")}
         if isinstance(native_usage, dict):
@@ -59,20 +63,12 @@ async def run_claude_worker(
     output: Path,
     timeout_seconds: float,
     max_output_bytes: int,
+    payload_schema: dict | None = None,
+    effort: str | None = None,
 ) -> dict[str, Any]:
     worker_id = f"worker-{index:04d}"
-    prompt_path = write_worker_prompt(output, worker_id, base_prompt)
-    schema = {
-        "type": "object",
-        "properties": {
-            "worker_id": {"type": "string", "const": worker_id},
-            "outcome": {"type": "string", "enum": ["completed", "blocked", "failed"]},
-            "summary": {"type": "string", "minLength": 1, "maxLength": 2000},
-            "result_json": {"type": "string"},
-        },
-        "required": ["worker_id", "outcome", "summary", "result_json"],
-        "additionalProperties": False,
-    }
+    prompt_path = write_worker_prompt(output, worker_id, base_prompt, payload_schema)
+    schema = receipt_schema(worker_id, payload_schema)
     command = [
         executable_path,
         "--print",
@@ -84,14 +80,20 @@ async def run_claude_worker(
     ]
     if model is not None:
         command.extend(["--model", model])
+    environment = None
+    if effort is not None:
+        environment = {**os.environ, "CLAUDE_CODE_EFFORT_LEVEL": effort}
     return await run_structured_worker(
         worker_id=worker_id,
         command=command,
-        parse_output=parse_claude_output,
+        parse_output=lambda stdout, worker: parse_claude_output(
+            stdout, worker, payload_schema is not None
+        ),
         semaphore=semaphore,
         working_directory=working_directory,
         output=output,
         timeout_seconds=timeout_seconds,
         max_output_bytes=max_output_bytes,
         stdin_path=prompt_path,
+        environment=environment,
     )
