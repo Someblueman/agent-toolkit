@@ -21,7 +21,7 @@ Legend: ✅ supported · 🟡 partial · ❌ not supported · 🚧 scaffold only
 |---|:---:|:---:|:---:|:---:|:---:|
 | **Orchestrator / Caller** | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Worker Target (Agy / Gemini)** | N/A | N/A | ✅ | N/A | N/A |
-| **Worker Target (OpenCode / Minimax)**| N/A | ✅ | N/A | N/A | N/A |
+| **Worker Target (OpenCode / DeepSeek)**| N/A | ✅ | N/A | N/A | N/A |
 | **Adapter Configuration** | ✅ (`configs/codex/`) | ✅ (`lib/opencode_worker.mjs`) | ✅ (`schemas/`) | 🟡 | 🟡 |
 
 ### Harness & Agent Details
@@ -29,6 +29,9 @@ Legend: ✅ supported · 🟡 partial · ❌ not supported · 🚧 scaffold only
 - **Codex**: Full support as task orchestrator. Dispatches subtasks via bash tool calls to `tools/fanout/bin/fanout`, loads instructions from `skills/fanout/SKILL.md`, and follows ingestion workflow in `configs/codex/README.md`.
 - **OpenCode**: Full support both as caller orchestrator and as worker harness (`--harness opencode`). Spawns ephemeral SDK v2 instances per worker with support for arbitrary `--agent` profiles (`plan`, `build`, etc.) and arbitrary task-specific JSON payloads.
 - **Antigravity (Agy)**: Full support both as caller orchestrator and as worker harness (`--harness agy`). Executes `gemini-3.7-flash-low` in plan sandbox mode with schema validation and automatic 1x transient retries.
+- **Muse**: Worker harness via `--harness muse`; native headless CLI, normal permissions,
+  single attempt, and validated terminal JSON receipts. Uses its native model default
+  unless `--model` is supplied.
 - **Claude Code & Pi**: Full support as CLI caller orchestrators invoking `tools/fanout/bin/fanout`.
 
 ---

@@ -63,6 +63,11 @@ try {
     hostname: "127.0.0.1",
     port,
     timeout: 10_000,
+    // DeepSeek rejects forced tool_choice in thinking mode. This override is
+    // private to this worker server; retain the selected agent's tools/policy.
+    config: modelID === "deepseek-v4.1-flash" ? {
+      agent: { [values.agent]: { thinking: { type: "disabled" } } },
+    } : undefined,
   }));
 
   const created = await client.session.create({

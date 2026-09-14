@@ -139,7 +139,7 @@ class TestOpenCodeReceiptValidation(unittest.TestCase):
             "summary": "Task completed successfully",
             "result_json": json.dumps({"custom_key": "custom_value", "items": [1, 2, 3]}),
         }
-        decoded, err = self.fanout.validate_opencode_receipt(receipt, "worker-0001")
+        decoded, err = self.fanout.validate_receipt(receipt, "worker-0001")
         self.assertIsNone(err)
         self.assertIsNotNone(decoded)
         self.assertEqual(decoded["worker_id"], "worker-0001")
@@ -155,7 +155,7 @@ class TestOpenCodeReceiptValidation(unittest.TestCase):
             "summary": "Task status unknown",
             "result_json": "{}",
         }
-        decoded, err = self.fanout.validate_opencode_receipt(receipt, "worker-0001")
+        decoded, err = self.fanout.validate_receipt(receipt, "worker-0001")
         self.assertIsNone(decoded)
         self.assertIsNotNone(err)
         self.assertIn("outcome", err)
@@ -168,7 +168,7 @@ class TestOpenCodeReceiptValidation(unittest.TestCase):
             "summary": "Task completed",
             "result_json": "raw string not json",
         }
-        decoded, err = self.fanout.validate_opencode_receipt(receipt_not_json, "worker-0001")
+        decoded, err = self.fanout.validate_receipt(receipt_not_json, "worker-0001")
         self.assertIsNone(decoded)
         self.assertIn("valid json", err.lower())
 
@@ -179,7 +179,7 @@ class TestOpenCodeReceiptValidation(unittest.TestCase):
             "summary": "Task completed",
             "result_json": json.dumps([1, 2, 3]),
         }
-        decoded, err = self.fanout.validate_opencode_receipt(receipt_array, "worker-0001")
+        decoded, err = self.fanout.validate_receipt(receipt_array, "worker-0001")
         self.assertIsNone(decoded)
         self.assertIn("json object", err.lower())
 

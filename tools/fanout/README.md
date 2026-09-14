@@ -1,10 +1,13 @@
 # tools/fanout: Standalone Multi-Worker Delegation Engine
 
-`tools/fanout` is a standalone, bounded execution engine and CLI tool that delegates tasks to concurrent one-shot workers running in separate harnesses (Agy / Gemini and OpenCode / Minimax) with strict process-group lifecycle isolation, bounded timeouts, single transient retry, atomic result packets, and K-of-N quorum verification.
+`tools/fanout` is a standalone, bounded execution engine and CLI tool that delegates tasks to concurrent one-shot workers running in separate harnesses (Agy / Gemini, OpenCode / DeepSeek, and Muse) with strict process-group lifecycle isolation, bounded timeouts, single transient retry, atomic result packets, and K-of-N quorum verification.
 
 ---
 
 ## Architecture
+
+The diagram shows the Agy and OpenCode paths. Muse uses the shared single-attempt
+process runner directly through its headless CLI.
 
 ```text
                                ┌────────────────────────────────────────────────────────┐
@@ -37,6 +40,8 @@
 
 The tool is structured into three primary subdirectories:
 - `bin/fanout`: Executable CLI entry point (`chmod +x`). Handles option parsing, semaphore-bounded scheduling, signal traps, subprocess execution, and atomic packet writing.
+- `lib/muse_worker.py`: Muse CLI dispatch and root terminal-event receipt parsing.
+- `lib/structured_worker.py`: Shared receipt validation and single-attempt process lifecycle.
 - `lib/opencode_worker.mjs`: Node.js worker helper managing ephemeral OpenCode SDK v2 instances on isolated TCP ports, extracting universal structured receipts.
 - `schemas/worker-result.schema.json`: JSON Schema (Draft 2020-12) defining the structured output format for Agy workers.
 
@@ -79,18 +84,41 @@ tools/fanout/bin/fanout <prompt_file> \
 |---|---|---|---|
 | `<prompt_file>` | Positional Path | *Required* | Path to the markdown or text prompt file. |
 | `--output` | Path | *Required* | Destination directory for results and `packet.json` (must not exist or be empty). |
-| `--harness` | `agy` \| `opencode` | `agy` | Worker harness to execute. |
+| `--harness` | `agy` \| `opencode` \| `muse` | `agy` | Worker harness to execute. |
 | `--workers` | Integer (1..50) | `4` | Number of workers to spawn. |
 | `--concurrency` | Integer (1..workers) | `min(4, workers)` | Max concurrent worker processes in flight. |
 | `--min-results` | Integer (1..workers) | `workers` | Minimum required valid results for exit code 0 (K-of-N threshold). |
 | `--timeout-seconds` | Float (> 1.0) | `300.0` | Per-attempt execution timeout in seconds. |
-| `--model` | String | Harness default | Model route override (`gemini-3.7-flash-low` for Agy, `opencode-go/minimax-m3` for OpenCode). |
+| `--model` | String | Harness default | Model route override (`gemini-3.7-flash-low` for Agy, `opencode-go/deepseek-v4.1-flash` for OpenCode; Muse uses its native default unless overridden). |
 | `--agent` | String | `plan` | OpenCode agent profile (only with `--harness opencode`). |
 | `--working-directory`| Path | Current directory | Working directory context for worker processes. |
 | `--agy-retries` | `0` \| `1` | `1` | Max transient retries for Agy workers. |
 | `--max-output-bytes` | Integer (>= 1024) | `1000000` | Max stdout/stderr capture buffer in bytes per attempt. |
 
 ---
+
+## Muse headless workers
+
+Use `--harness muse` to run the installed `muse exec --json` CLI. `--model` is optional:
+without it Muse chooses its native default and `packet.json` records `model: null`.
+The existing worker count, concurrency, quorum, timeout, and output validation options apply.
+Muse runs once per worker, with normal permissions and closed stdin; fanout adds no trust
+or approval/sandbox bypass. `--agent` is OpenCode-only and `--agy-retries` is Agy-only.
+
+The prompt requests `{worker_id, outcome, summary, result_json}`, matching OpenCode's
+receipt. Only valid JSON in the root completed terminal event counts; child completions,
+streamed prose, malformed receipts, and failed/incomplete runs cannot satisfy the quorum.
+The worker captures `prompt.txt`, `stdout.jsonl`, and `stderr.log` privately. Muse session
+logging is disabled for these one-shot runs. Token/cost totals are unavailable (`null`).
+
+OpenCode now defaults to `opencode-go/deepseek-v4.1-flash`. For this model the private
+server disables thinking on the selected agent: the provider rejects forced tool choice
+in thinking mode, while OpenCode needs it for structured receipts. Other models and
+on-disk OpenCode configuration are unchanged.
+
+```sh
+tools/fanout/bin/fanout prompt.md --harness muse --workers 3 --output /tmp/muse-review
+```
 
 ## Exit Codes
 

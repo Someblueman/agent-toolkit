@@ -1,16 +1,16 @@
 ---
 name: fanout
-description: Delegate tasks to bounded concurrent workers via Agy (Gemini) or OpenCode (Minimax) and collect structured results. Load when delegating independent analysis, multi-model reviews, parallel investigations, or consensus checks across non-Codex models.
+description: Delegate tasks to bounded concurrent workers via Agy (Gemini), OpenCode (DeepSeek) or Muse and collect structured results. Load when delegating independent analysis, multi-model reviews, parallel investigations, or consensus checks across non-Codex models.
 ---
 
 # Fanout Task Delegation
 
-Delegate bounded subtasks, architectural reviews, or exploratory investigations to parallel one-shot workers running in separate harnesses (Agy / Gemini and OpenCode / Minimax). Workers execute in isolated process groups under strict supervisor deadlines, emit structured results conforming to JSON schemas, and record full attempt provenance in a deterministic `packet.json`.
+Delegate bounded subtasks, architectural reviews, or exploratory investigations to parallel one-shot workers running in separate harnesses (Agy / Gemini, OpenCode / DeepSeek, and Muse). Workers execute in isolated process groups under strict supervisor deadlines, emit structured results conforming to JSON schemas, and record full attempt provenance in a deterministic `packet.json`.
 
 ## When to load
 
 Load this skill whenever:
-- You need independent, non-Codex model reviews (e.g. Gemini 3.7 Flash via Agy, Minimax M3 via OpenCode).
+- You need independent, non-Codex model reviews (e.g. Gemini 3.7 Flash via Agy, DeepSeek V4.1 Flash via OpenCode, or Muse).
 - You want to gather multiple parallel perspectives or consensus checks on code, architecture, or plan proposals.
 - You need to run exploratory code investigations without polluting your current agent context window.
 - You want fault-tolerant multi-worker delegation with explicit K-of-N quorum guarantees.
@@ -24,14 +24,14 @@ and use its plain-text absolute path as `TOOLKIT_ROOT`; do not execute or source
 For other detached copies, require an explicit toolkit location. Verify
 `$TOOLKIT_ROOT/tools/fanout/bin/fanout` exists and is executable before dispatching.
 If the checkout moved, rerun its installer to refresh the location. The selected harness
-(Agy or OpenCode) must also be installed and authenticated; skill installation does not
+(Agy, OpenCode, or Muse) must also be installed and authenticated; skill installation does not
 provision it. Do not assume the target repository contains the tool. Schema-valid receipts
 establish structure, not grounded evidence; independently inspect cited files and commands.
 
 ```sh
 "$TOOLKIT_ROOT/tools/fanout/bin/fanout" <prompt_file> \
   --output <output_dir> \
-  [--harness {agy,opencode}] \
+  [--harness {agy,opencode,muse}] \
   [--workers <count>] \
   [--concurrency <count>] \
   [--min-results <count>] \
@@ -49,12 +49,12 @@ establish structure, not grounded evidence; independently inspect cited files an
 |---|---|---|---|
 | `<prompt_file>` | Positional Path | *Required* | Path to the markdown or text prompt file describing the task. |
 | `--output` | Path | *Required* | Destination directory for results and `packet.json` (must not exist or be empty). |
-| `--harness` | `agy` \| `opencode` | `agy` | Execution harness to use. |
+| `--harness` | `agy` \| `opencode` \| `muse` | `agy` | Execution harness to use. |
 | `--workers` | Integer (1..50) | `4` | Total number of worker instances to launch. |
 | `--concurrency` | Integer (1..workers) | `min(4, workers)` | Maximum concurrent worker processes in flight. |
 | `--min-results` | Integer (1..workers) | `workers` | Minimum valid results needed for exit code 0 (K-of-N threshold). |
 | `--timeout-seconds` | Float (> 1.0) | `300.0` | Per-attempt execution timeout in seconds. |
-| `--model` | String | Harness default | Model route override (`gemini-3.7-flash-low` for Agy, `opencode-go/minimax-m3` for OpenCode). |
+| `--model` | String | Harness default | Model route override (`gemini-3.7-flash-low` for Agy, `opencode-go/deepseek-v4.1-flash` for OpenCode; Muse uses its native default unless overridden). |
 | `--agent` | String | `plan` | OpenCode agent profile (only applicable when `--harness opencode`). |
 | `--working-directory`| Path | Current directory | Working directory context for worker processes. |
 | `--agy-retries` | `0` \| `1` | `1` | Max transient retries (timeout/nonzero) for Agy workers. |
@@ -87,7 +87,9 @@ Choose the harness matching the task characteristics and isolation requirements:
 - **Best For**: Fast second opinions, architectural review, risk analysis, code sanity checks, multi-agent advisory councils.
 
 ### 2. OpenCode Harness (`--harness opencode`)
-- **Default Model**: `opencode-go/minimax-m3`
+- **Default Model**: `opencode-go/deepseek-v4.1-flash`. Fanout disables thinking for this
+  model inside the private worker server because DeepSeek thinking mode rejects the
+  forced tool choice used for structured receipts. Other models retain their settings.
 - **Execution Mode**: Spawns an ephemeral OpenCode SDK v2 server per worker via `lib/opencode_worker.mjs` on an isolated TCP port.
 - **Isolation & Tools**: Uses the specified `--agent` profile (default: `plan`, or `build`, etc.) with that agent's configured tools (such as `read`, `grep`, `glob`, `bash`).
 - **Retry Policy**: Single attempt per worker (no automatic retry).
@@ -102,6 +104,25 @@ Choose the harness matching the task characteristics and isolation requirements:
   ```
   The supervisor validates the outer receipt and parses `result_json` into `result.payload`. Only `outcome: "completed"` counts toward `valid_results`.
 - **Best For**: Deep codebase exploration, execution planning, repository search, or tasks requiring multi-turn tool interaction.
+
+### 3. Muse harness (`--harness muse`)
+
+- Runs `muse exec --json --no-session-log --workspace <directory> --prompt-file <file>`.
+- Uses Muse's native model default; `--model <id>` explicitly overrides it. The packet's
+  `model` is `null` when no override was supplied; it does not claim a resolved model id.
+- Preserves Muse's normal tools, approval, trust, and sandbox settings. No `--yolo`,
+  permission bypass, or automatic workspace trust is added. Stdin is closed for headless
+  execution; tasks needing unavailable permissions should report `blocked`.
+- Uses one attempt, with the same concurrency limit and process-group timeout/cancellation
+  cleanup as OpenCode. `--agent` applies only to OpenCode.
+- Requests the same receipt fields as OpenCode in the final answer. Muse has no native
+  receipt-schema flag: fanout validates the JSON in the root `run.terminal.completed`
+  event. Child events and streamed text cannot establish completion. Invalid, incomplete,
+  blocked, or failed results do not count toward the quorum.
+- Stores private `prompt.txt`, `stdout.jsonl`, and `stderr.log` per worker. Session logging
+  is disabled for these one-shot runs; the packet and captured output retain the evidence.
+  Token/cost totals remain `null` when Muse does not supply them in this result path.
+
 
 ## Result interpretation (`packet.json`)
 

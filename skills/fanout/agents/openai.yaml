@@ -1,3 +1,3 @@
 interface:
   display_name: "Fanout"
-  short_description: "Delegate parallel reviews to Agy or OpenCode"
+  short_description: "Delegate parallel work to Agy, OpenCode, or Muse"

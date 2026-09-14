@@ -283,7 +283,7 @@ class BaseFanoutTestCase(unittest.TestCase):
         if harness == "agy":
             command.extend(["--agy", str(self.fake_agy)])
             command.extend(["--agy-retries", str(retries)])
-        else:
+        elif harness == "opencode":
             command.extend(["--opencode", str(self.fake_opencode)])
             command.extend(["--node", str(self.fake_node)])
             command.extend(["--opencode-sdk", str(self.fake_sdk)])

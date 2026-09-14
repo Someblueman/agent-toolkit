@@ -80,7 +80,7 @@ class TestOpenCodeHarness(BaseFanoutTestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertIsNotNone(packet)
         self.assertEqual(packet["harness"], "opencode")
-        self.assertEqual(packet["model"], "opencode-go/minimax-m3")
+        self.assertEqual(packet["model"], "opencode-go/deepseek-v4.1-flash")
         self.assertEqual(packet["agent"], "build")
         self.assertEqual(packet["valid_results"], 2)
 
