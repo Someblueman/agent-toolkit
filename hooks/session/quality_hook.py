@@ -19,7 +19,7 @@ from quality_lib.config import (
     load,
 )
 from quality_lib.incremental import digest, evaluate, snapshot
-from quality_lib.runner import doctor, manual_requirements
+from quality_lib.runner import doctor, manual_requirements, size_findings
 
 
 def reply(event, text, block=False):
@@ -181,6 +181,8 @@ def process_locked(payload, metrics, root, config, path, cache_path):
             )
         if review:
             metrics["outcome"] = "review_incomplete"
+            if result.get("systemMessage"):
+                review += "\n" + result["systemMessage"]
             result = reply(event, review, block)
     result = add_preflight(event, result, message)
     for target, value in ((path, state), (cache_path, cache)):
@@ -205,12 +207,13 @@ def process(event, payload, root, config, current, state, cache, metrics):
         return reply(event, output) if output else {}
     code, output = measured_check(root, config, "full", state, current, cache, metrics)
     if not code:
+        advisory = completion_advisory(root, config, current)
         state["baseline"] = current
         state.pop("pending", None)
         state.pop("fast_checked", None)
         if manual_requirements(config):
             metrics["outcome"] = "manual_required"
-        return {}
+        return reply(event, advisory) if advisory else {}
     if payload.get("stop_hook_active") or state.get("pending"):
         return reply(
             event,
@@ -224,6 +227,23 @@ def process(event, payload, root, config, current, state, cache, metrics):
         "report pre-existing findings or setup blockers without expanding scope.\n"
         + output,
         True,
+    )
+
+
+def completion_advisory(root, config, current):
+    # Recompute even when native checks were cached; warnings are not cached results.
+    files = {name for check in current.values() for name in check["files"]}
+    findings = size_findings(root, config, files)
+    if snapshot(root, config) != current:
+        raise SnapshotChanged("Sources/configuration changed during size assessment")
+    if not findings:
+        return ""
+    return (
+        "Automated checks passed; advisory size findings remain:\n"
+        + "\n".join(findings)
+        + "\nAssess oversized files changed by this task and report the rationale for "
+        "keeping them or refactor within the authorized scope. Report pre-existing "
+        "findings without expanding scope. These warnings do not block completion."
     )
 
 

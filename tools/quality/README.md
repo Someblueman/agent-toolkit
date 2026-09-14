@@ -250,6 +250,11 @@ This follows the [Codex registration and trust contract](https://learn.chatgpt.c
 - `PostToolUse` checks the source inventory after Bash/patch events when content changed,
   using fast checks. Identical content isn't checked repeatedly.
 - `Stop` verifies all configured fast and full checks across the full inventory.
+  Advisory size findings remain visible even when checks pass or reuse cached results.
+  Assess oversized files changed by the task and report why they remain cohesive or
+  refactor within the authorized scope; report pre-existing findings without expanding
+  scope. Size warnings do not block completion in `review` mode. A passing Stop with
+  no advisory findings remains silent.
   The initial prompt snapshot is not evidence of passing checks. Valid successful
   results for identical inputs and full selections may be reused. A violation asks
   Codex to continue once. Persistent failure remains unresolved and is reported without

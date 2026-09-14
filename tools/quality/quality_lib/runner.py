@@ -147,7 +147,6 @@ def execute_check(root, config, spec, selected):
     code, output = run(root, command)
     if code != 0 and code not in spec["failure_codes"]:
         raise SetupError(f"{spec['name']} could not check (exit {code}):\n{output}")
-    size_messages = []
     size_files = set(selected)
     if spec.get("scope") == "translation-units":
         size_files.update(
@@ -156,7 +155,14 @@ def execute_check(root, config, spec, selected):
             if matches(name, spec["patterns"])
             and Path(name).suffix not in (".c", ".cc", ".cpp", ".cxx")
         )
-    for name in sorted(size_files):
+    size_messages = size_findings(root, config, size_files)
+    failed = bool(code) or (bool(size_messages) and config["size"]["mode"] == "error")
+    return int(failed), "\n".join([output, *size_messages]).strip()
+
+
+def size_findings(root, config, files):
+    messages = []
+    for name in sorted(set(files)):
         raw = inside(root, name).read_bytes()
         if b"\0" in raw:
             raise SetupError(f"Binary source file: {name}")
@@ -166,11 +172,10 @@ def execute_check(root, config, spec, selected):
             raise SetupError(f"Source must be UTF-8: {name}") from exc
         count = raw.count(b"\n") + int(bool(raw) and not raw.endswith(b"\n"))
         if count > config["size"]["limit"]:
-            size_messages.append(
+            messages.append(
                 f"SIZE {name}: {count} physical lines (limit {config['size']['limit']})"
             )
-    failed = bool(code) or (bool(size_messages) and config["size"]["mode"] == "error")
-    return int(failed), "\n".join([output, *size_messages]).strip()
+    return messages
 
 
 def check(root, config, stage="full"):
