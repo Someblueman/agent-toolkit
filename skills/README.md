@@ -25,7 +25,7 @@ description: One-line summary of what this skill does and when to load it.
 
 ## Existing skills
 
-- [fanout/](fanout/) — fan out a prompt to one-shot local workers (Agy / OpenCode / Muse / Pi).
+- [fanout/](fanout/) — fan out a prompt to one-shot local workers (Agy / OpenCode / Muse / Pi / Claude Code).
 - [code-simplification/](code-simplification/) — diagnose and remove accidental complexity with behavioral-invariance verification.
 - [hardware-aware-optimization/](hardware-aware-optimization/) — hardware-aware optimization playbooks (SIMD, branchless, arenas, lock-free, PGO/LTO).
 - [profiling-software-performance/](profiling-software-performance/) — noise-controlled benchmarking and profiling across systems, managed, and lazy runtimes.

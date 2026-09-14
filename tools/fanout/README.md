@@ -1,12 +1,12 @@
 # tools/fanout: Standalone Multi-Worker Delegation Engine
 
-`tools/fanout` is a standalone, bounded execution engine and CLI tool that delegates tasks to concurrent one-shot workers running in separate harnesses (Agy / Gemini, OpenCode / DeepSeek, Muse, and Pi) with strict process-group lifecycle isolation, bounded timeouts, single transient retry, atomic result packets, and K-of-N quorum verification.
+`tools/fanout` is a standalone, bounded execution engine and CLI tool that delegates tasks to concurrent one-shot workers running in separate harnesses (Agy / Gemini, OpenCode / DeepSeek, Muse, Pi, and Claude Code) with strict process-group lifecycle isolation, bounded timeouts, single transient retry, atomic result packets, and K-of-N quorum verification.
 
 ---
 
 ## Architecture
 
-The diagram shows the Agy and OpenCode paths. Muse and Pi use the shared single-attempt
+The diagram shows the Agy and OpenCode paths. Muse, Pi, and Claude Code use the shared single-attempt
 process runner directly through its headless CLI.
 
 ```text
@@ -40,6 +40,7 @@ process runner directly through its headless CLI.
 
 The tool is structured into three primary subdirectories:
 - `bin/fanout`: Executable CLI entry point (`chmod +x`). Handles option parsing, semaphore-bounded scheduling, signal traps, subprocess execution, and atomic packet writing.
+- `lib/claude_worker.py`: Claude Code print-mode dispatch and structured-result validation.
 - `lib/pi_worker.py`: Pi CLI dispatch and terminal-event receipt parsing.
 - `lib/muse_worker.py`: Muse CLI dispatch and root terminal-event receipt parsing.
 - `lib/structured_worker.py`: Shared receipt validation and single-attempt process lifecycle.
@@ -85,12 +86,12 @@ tools/fanout/bin/fanout <prompt_file> \
 |---|---|---|---|
 | `<prompt_file>` | Positional Path | *Required* | Path to the markdown or text prompt file. |
 | `--output` | Path | *Required* | Destination directory for results and `packet.json` (must not exist or be empty). |
-| `--harness` | `agy` \| `opencode` \| `muse` \| `pi` | `agy` | Worker harness to execute. |
+| `--harness` | `agy` \| `opencode` \| `muse` \| `pi` \| `claude` | `agy` | Worker harness to execute. |
 | `--workers` | Integer (1..50) | `4` | Number of workers to spawn. |
 | `--concurrency` | Integer (1..workers) | `min(4, workers)` | Max concurrent worker processes in flight. |
 | `--min-results` | Integer (1..workers) | `workers` | Minimum required valid results for exit code 0 (K-of-N threshold). |
 | `--timeout-seconds` | Float (> 1.0) | `300.0` | Per-attempt execution timeout in seconds. |
-| `--model` | String | Harness default | Model route override (`gemini-3.7-flash-low` for Agy, `opencode-go/deepseek-v4.1-flash` for OpenCode; Muse and Pi use their native defaults unless overridden). |
+| `--model` | String | Harness default | Model route override (`gemini-3.7-flash-low` for Agy, `opencode-go/deepseek-v4.1-flash` for OpenCode and Pi; Muse and Claude Code use their native defaults unless overridden). |
 | `--agent` | String | `plan` | OpenCode agent profile (only with `--harness opencode`). |
 | `--working-directory`| Path | Current directory | Working directory context for worker processes. |
 | `--agy-retries` | `0` \| `1` | `1` | Max transient retries for Agy workers. |
@@ -128,25 +129,48 @@ precedence; arbitrary plugins retain their native side effects. This is process/
 isolation, not an OS read-only sandbox.
 
 Worker execution errors are recorded as `runner_error` attempts rather than discarding
-all sibling results. Argument validation errors still exit 2. OpenCode, Muse, and Pi tasks
+all sibling results. Argument validation errors still exit 2. OpenCode, Muse, Pi, and Claude Code tasks
 are not automatically resubmitted; their native provider retries remain deadline-bounded.
 
 ## Pi headless workers
 
 Use `--harness pi` with an installed, authenticated Pi CLI. It runs
-`pi --mode json --print --no-session`, using native model/provider defaults unless
-`--model` is supplied. Model patterns such as `provider/model:high` pass through unchanged.
+`pi --mode json --print --no-session`, defaulting to
+`opencode-go/deepseek-v4.1-flash` unless `--model` is supplied. Model patterns such as `provider/model:high` pass through unchanged.
 Normal tools, extensions, trust, and permissions remain enabled as configured.
 
 Only the final assistant message in a completed `agent_end` counts, with `stopReason: stop`
 and a valid receipt. Transient retry events, streamed/tool output, aborted or truncated
 answers do not count. Private JSONL/prompt/stderr artifacts and native token/cost totals
-are retained. The packet model is null if selection was left to Pi.
+are retained. This fanout default does not modify standalone Pi settings.
 
 
 ```sh
 tools/fanout/bin/fanout prompt.md --harness pi --workers 3 --output /tmp/pi-review
 ```
+
+## Claude Code headless workers
+
+Use `--harness claude` with an installed, authenticated Claude Code CLI. It uses
+`--print --output-format json --no-session-persistence --json-schema` and reads a private
+prompt file through stdin. Native model selection is retained (`model: null` in the
+packet); `--model sonnet` or another native alias/id overrides it.
+
+Configured tools, hooks, plugins, and permissions remain in effect. Fanout supplies no
+permission bypass or tool auto-approval. Claude's native print mode skips the workspace
+trust dialog: dispatch only in trusted directories. Hooks/plugins may still write state.
+
+The adapter validates the `structured_output` receipt only in a successful native
+`result` envelope with `is_error: false`. Errors, text-only answers, wrong worker ids,
+and invalid payloads do not count. It shares process-group deadlines/cancellation with
+other single-attempt workers and captures prompt/stdout/stderr plus native token and
+estimated cost totals. No automatic task resubmission is added.
+
+```sh
+tools/fanout/bin/fanout prompt.md --harness claude --workers 4 --output /tmp/claude-review
+```
+
+Protocol reference: [Claude Code headless documentation](https://code.claude.com/docs/en/headless).
 
 ## Exit Codes
 

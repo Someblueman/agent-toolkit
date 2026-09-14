@@ -20,4 +20,4 @@ Tools are designed to be callable from:
 
 - [quality/](quality/) — install opt-in project lifecycle hooks and run each repository's
   declared lint, test, type and build checks; supports combined `setup --codex` and an optional completed-work Luna review.
-- [fanout/](fanout/) — run bounded one-shot local workers (Agy / OpenCode / Muse / Pi) and collect structured results.
+- [fanout/](fanout/) — run bounded one-shot local workers (Agy / OpenCode / Muse / Pi / Claude Code) and collect structured results.

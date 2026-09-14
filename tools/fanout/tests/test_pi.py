@@ -21,18 +21,18 @@ class PiHarness(BaseFanoutTestCase):
             **kwargs,
         )
 
-    def test_native_model_default_and_ephemeral_flags(self):
+    def test_deepseek_default_and_ephemeral_flags(self):
         completed, packet = self.run_pi(workers=2, concurrency=2)
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(packet["valid_results"], 2)
-        self.assertIsNone(packet["model"])
+        self.assertEqual(packet["model"], "opencode-go/deepseek-v4.1-flash")
         self.assertEqual(packet["total_tokens"], 84)
         self.assertEqual(packet["total_cost_usd"], 0.02)
         self.assertEqual(packet["total_retries"], 0)
         args = json.loads(
             (self.root / "run-pi-success-2-2/worker-0001/invocation.json").read_text()
         )
-        self.assertNotIn("--model", args)
+        self.assertEqual(args[args.index("--model") + 1], packet["model"])
 
     def test_model_override_and_partial_quorum(self):
         completed, packet = self.run_pi(

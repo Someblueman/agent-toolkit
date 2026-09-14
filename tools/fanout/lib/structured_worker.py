@@ -8,6 +8,7 @@ import os
 import signal
 import time
 from collections.abc import Callable, Coroutine
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -144,6 +145,7 @@ async def run_structured_worker(
     max_output_bytes: int,
     environment: dict[str, str] | None = None,
     stdout_name: str = "stdout.json",
+    stdin_path: Path | None = None,
 ) -> dict[str, Any]:
     worker_dir = output / worker_id
     worker_dir.mkdir(mode=0o700, exist_ok=True)
@@ -152,15 +154,20 @@ async def run_structured_worker(
     stderr_path = worker_dir / "stderr.log"
     started = time.monotonic()
     async with semaphore:
-        process = await asyncio.create_subprocess_exec(
-            *command,
-            cwd=working_directory,
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=environment,
-            start_new_session=True,
-        )
+        with (
+            stdin_path.open("rb")
+            if stdin_path is not None
+            else nullcontext(asyncio.subprocess.DEVNULL)
+        ) as stdin:
+            process = await asyncio.create_subprocess_exec(
+                *command,
+                cwd=working_directory,
+                stdin=stdin,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=environment,
+                start_new_session=True,
+            )
         communicate = asyncio.create_task(process.communicate())
         try:
             stdout, stderr = await asyncio.wait_for(

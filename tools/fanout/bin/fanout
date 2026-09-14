@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run bounded one-shot Agy, OpenCode, Muse, or Pi workers and collect structured results."""
+"""Run bounded one-shot harness workers and collect structured results."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from typing import Any
 
 TOOL_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOL_ROOT / "lib"))
+from claude_worker import run_claude_worker
 from muse_worker import run_muse_worker
 from pi_worker import run_pi_worker
 from structured_worker import (
@@ -35,7 +36,8 @@ DEFAULT_MODELS = {
     "agy": "gemini-3.7-flash-low",
     "opencode": "opencode-go/deepseek-v4.1-flash",
     "muse": None,
-    "pi": None,
+    "pi": "opencode-go/deepseek-v4.1-flash",
+    "claude": None,
 }
 
 
@@ -72,9 +74,7 @@ def parse_args() -> argparse.Namespace:
         description="Fan out a trusted task prompt to one-shot local workers."
     )
     parser.add_argument("prompt_file", type=Path)
-    parser.add_argument(
-        "--harness", choices=("agy", "opencode", "muse", "pi"), default="agy"
-    )
+    parser.add_argument("--harness", choices=tuple(DEFAULT_MODELS), default="agy")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--concurrency", type=int, default=None)
     parser.add_argument("--model")
@@ -91,6 +91,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-results", type=int)
     parser.add_argument("--agy", default="agy", help=argparse.SUPPRESS)
     parser.add_argument("--pi", default="pi", help=argparse.SUPPRESS)
+    parser.add_argument("--claude", default="claude", help=argparse.SUPPRESS)
     parser.add_argument("--muse", default="muse", help=argparse.SUPPRESS)
     parser.add_argument("--opencode", default="opencode", help=argparse.SUPPRESS)
     parser.add_argument("--node", default="node", help=argparse.SUPPRESS)
@@ -506,8 +507,12 @@ async def run(args: argparse.Namespace) -> int:
             )
             for index in range(1, args.workers + 1)
         ]
-    elif args.harness in {"muse", "pi"}:
-        runner = run_muse_worker if args.harness == "muse" else run_pi_worker
+    elif args.harness in {"muse", "pi", "claude"}:
+        runner = {
+            "muse": run_muse_worker,
+            "pi": run_pi_worker,
+            "claude": run_claude_worker,
+        }[args.harness]
         workers = [
             runner(
                 index=index,

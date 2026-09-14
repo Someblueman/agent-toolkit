@@ -22,7 +22,9 @@ Legend: ✅ supported · 🟡 partial · ❌ not supported · 🚧 scaffold only
 | **Orchestrator / Caller** | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **Worker Target (Agy / Gemini)** | N/A | N/A | ✅ | N/A | N/A |
 | **Worker Target (OpenCode / DeepSeek)**| N/A | ✅ | N/A | N/A | N/A |
-| **Adapter Configuration** | ✅ (`configs/codex/`) | ✅ (`lib/opencode_worker.mjs`) | ✅ (`schemas/`) | 🟡 | 🟡 |
+| **Worker Target (Claude Code)** | N/A | N/A | N/A | ✅ | N/A |
+| **Worker Target (Pi / DeepSeek)** | N/A | N/A | N/A | N/A | ✅ |
+| **Adapter Configuration** | ✅ (`configs/codex/`) | ✅ (`lib/opencode_worker.mjs`) | ✅ (`schemas/`) | ✅ (`lib/claude_worker.py`) | ✅ (`lib/pi_worker.py`) |
 
 ### Harness & Agent Details
 
@@ -33,8 +35,11 @@ Legend: ✅ supported · 🟡 partial · ❌ not supported · 🚧 scaffold only
   single attempt, and validated terminal JSON receipts. Uses its native model default
   unless `--model` is supplied.
 - **Pi**: Native ephemeral JSON CLI worker via `--harness pi`, with terminal-message
-  receipt validation and the shared timeout/concurrency limits. Native model selection
-  can be overridden using `--model`.
+  receipt validation and the shared timeout/concurrency limits. Defaults to
+  `opencode-go/deepseek-v4.1-flash`; override using `--model`.
+- **Claude Code**: Worker harness via `--harness claude`, native print-mode structured
+  output, normal permissions, single attempt, and shared deadlines. Uses its configured
+  model unless overridden. Print mode skips workspace trust prompts; use trusted directories.
 - **Claude Code & Pi**: Full support as CLI caller orchestrators invoking `tools/fanout/bin/fanout`.
 
 ---
