@@ -10,7 +10,7 @@ The index of everything shippable in this toolkit. Updated when skills, hooks, a
 | [code-simplification](../skills/code-simplification/) | Diagnose and remove accidental complexity; enforce complexity budgets with differential parity testing. | draft |
 | [define-goal](../skills/define-goal/) | Define a clear, bounded goal for the session before acting on it. | stable |
 | [hardware-aware-optimization](../skills/hardware-aware-optimization/) | Hardware-aware optimization playbooks: SIMD, branchless, custom allocators, lock-free, PGO/LTO. | draft |
-| [fanout](../skills/fanout/) | Fan out a prompt to one-shot local workers (Agy / OpenCode / Muse). | stable |
+| [fanout](../skills/fanout/) | Fan out a prompt to one-shot local workers (Agy / OpenCode / Muse / Pi). | stable |
 | [go-engineering](../skills/go-engineering/) | Idiomatic Go implementation, review, and tooling. | stable |
 | [profiling-software-performance](../skills/profiling-software-performance/) | Noise-controlled benchmarking and profiling for systems, managed, and lazy runtimes. | draft |
 | [haskell](../skills/haskell/) | Haskell implementation, type-driven design, and review. | stable |
@@ -65,7 +65,7 @@ Codex's `.system` skills and plugin-cache skills remain vendor-managed; their so
 
 | Name | Description | Status |
 |------|-------------|--------|
-| [fanout](../tools/fanout/) | Run bounded one-shot local workers (Agy / OpenCode / Muse) and collect structured results. | stable |
+| [fanout](../tools/fanout/) | Run bounded one-shot local workers (Agy / OpenCode / Muse / Pi) and collect structured results. | stable |
 | [quality](../tools/quality/) | Provision pinned linters and run repository-defined behavioral checks through automatic preflight, edit feedback and completion hooks. | draft |
 
 ## Notable scripts

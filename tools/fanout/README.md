@@ -1,12 +1,12 @@
 # tools/fanout: Standalone Multi-Worker Delegation Engine
 
-`tools/fanout` is a standalone, bounded execution engine and CLI tool that delegates tasks to concurrent one-shot workers running in separate harnesses (Agy / Gemini, OpenCode / DeepSeek, and Muse) with strict process-group lifecycle isolation, bounded timeouts, single transient retry, atomic result packets, and K-of-N quorum verification.
+`tools/fanout` is a standalone, bounded execution engine and CLI tool that delegates tasks to concurrent one-shot workers running in separate harnesses (Agy / Gemini, OpenCode / DeepSeek, Muse, and Pi) with strict process-group lifecycle isolation, bounded timeouts, single transient retry, atomic result packets, and K-of-N quorum verification.
 
 ---
 
 ## Architecture
 
-The diagram shows the Agy and OpenCode paths. Muse uses the shared single-attempt
+The diagram shows the Agy and OpenCode paths. Muse and Pi use the shared single-attempt
 process runner directly through its headless CLI.
 
 ```text
@@ -40,6 +40,7 @@ process runner directly through its headless CLI.
 
 The tool is structured into three primary subdirectories:
 - `bin/fanout`: Executable CLI entry point (`chmod +x`). Handles option parsing, semaphore-bounded scheduling, signal traps, subprocess execution, and atomic packet writing.
+- `lib/pi_worker.py`: Pi CLI dispatch and terminal-event receipt parsing.
 - `lib/muse_worker.py`: Muse CLI dispatch and root terminal-event receipt parsing.
 - `lib/structured_worker.py`: Shared receipt validation and single-attempt process lifecycle.
 - `lib/opencode_worker.mjs`: Node.js worker helper managing ephemeral OpenCode SDK v2 instances on isolated TCP ports, extracting universal structured receipts.
@@ -84,12 +85,12 @@ tools/fanout/bin/fanout <prompt_file> \
 |---|---|---|---|
 | `<prompt_file>` | Positional Path | *Required* | Path to the markdown or text prompt file. |
 | `--output` | Path | *Required* | Destination directory for results and `packet.json` (must not exist or be empty). |
-| `--harness` | `agy` \| `opencode` \| `muse` | `agy` | Worker harness to execute. |
+| `--harness` | `agy` \| `opencode` \| `muse` \| `pi` | `agy` | Worker harness to execute. |
 | `--workers` | Integer (1..50) | `4` | Number of workers to spawn. |
 | `--concurrency` | Integer (1..workers) | `min(4, workers)` | Max concurrent worker processes in flight. |
 | `--min-results` | Integer (1..workers) | `workers` | Minimum required valid results for exit code 0 (K-of-N threshold). |
 | `--timeout-seconds` | Float (> 1.0) | `300.0` | Per-attempt execution timeout in seconds. |
-| `--model` | String | Harness default | Model route override (`gemini-3.7-flash-low` for Agy, `opencode-go/deepseek-v4.1-flash` for OpenCode; Muse uses its native default unless overridden). |
+| `--model` | String | Harness default | Model route override (`gemini-3.7-flash-low` for Agy, `opencode-go/deepseek-v4.1-flash` for OpenCode; Muse and Pi use their native defaults unless overridden). |
 | `--agent` | String | `plan` | OpenCode agent profile (only with `--harness opencode`). |
 | `--working-directory`| Path | Current directory | Working directory context for worker processes. |
 | `--agy-retries` | `0` \| `1` | `1` | Max transient retries for Agy workers. |
@@ -111,13 +112,40 @@ streamed prose, malformed receipts, and failed/incomplete runs cannot satisfy th
 The worker captures `prompt.txt`, `stdout.jsonl`, and `stderr.log` privately. Muse session
 logging is disabled for these one-shot runs. Token/cost totals are unavailable (`null`).
 
-OpenCode now defaults to `opencode-go/deepseek-v4.1-flash`. For this model the private
-server disables thinking on the selected agent: the provider rejects forced tool choice
-in thinking mode, while OpenCode needs it for structured receipts. Other models and
-on-disk OpenCode configuration are unchanged.
+## OpenCode reliability
+
+OpenCode defaults to `opencode-go/deepseek-v4.1-flash`, with normal thinking settings.
+The helper asks for a JSON final answer and validates it locally, avoiding the forced
+structured-output tool choice rejected by thinking models. There is one async submission;
+short status/message requests replace the long synchronous POST that failed around
+305 seconds in the reported review. Polling never resubmits the task.
+
+Each worker receives its own `OPENCODE_DB` beneath its private output directory. Existing
+credentials, agents, permissions, plugins, and injected configuration remain available.
+The goal plugin's `OPENCODE_GOAL_STATE_PATH` is also routed there to avoid creating its
+`.opencode/goals` state in the reviewed tree. An explicit plugin state-path option takes
+precedence; arbitrary plugins retain their native side effects. This is process/state
+isolation, not an OS read-only sandbox.
+
+Worker execution errors are recorded as `runner_error` attempts rather than discarding
+all sibling results. Argument validation errors still exit 2. OpenCode, Muse, and Pi tasks
+are not automatically resubmitted; their native provider retries remain deadline-bounded.
+
+## Pi headless workers
+
+Use `--harness pi` with an installed, authenticated Pi CLI. It runs
+`pi --mode json --print --no-session`, using native model/provider defaults unless
+`--model` is supplied. Model patterns such as `provider/model:high` pass through unchanged.
+Normal tools, extensions, trust, and permissions remain enabled as configured.
+
+Only the final assistant message in a completed `agent_end` counts, with `stopReason: stop`
+and a valid receipt. Transient retry events, streamed/tool output, aborted or truncated
+answers do not count. Private JSONL/prompt/stderr artifacts and native token/cost totals
+are retained. The packet model is null if selection was left to Pi.
+
 
 ```sh
-tools/fanout/bin/fanout prompt.md --harness muse --workers 3 --output /tmp/muse-review
+tools/fanout/bin/fanout prompt.md --harness pi --workers 3 --output /tmp/pi-review
 ```
 
 ## Exit Codes
@@ -272,3 +300,9 @@ tools/fanout/bin/fanout prompt.md \
   --timeout-seconds 120 \
   --output runs/opencode-plan-01
 ```
+
+## Validation
+
+See [OpenCode recovery and Pi qualification](../../docs/fanout-validation-20260914.md)
+for the reproduced failures, retained live checks, and limits of acceptance. The fanout
+regression suite runs in the repository full quality stage.

@@ -7,7 +7,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from structured_worker import run_structured_worker, validate_receipt, write_private
+from structured_worker import (
+    run_structured_worker,
+    validate_receipt,
+    write_worker_prompt,
+)
 
 
 def parse_muse_output(
@@ -55,7 +59,7 @@ async def run_muse_worker(
     *,
     index: int,
     semaphore: asyncio.Semaphore,
-    muse_path: str,
+    executable_path: str,
     model: str | None,
     base_prompt: str,
     working_directory: Path,
@@ -64,23 +68,9 @@ async def run_muse_worker(
     max_output_bytes: int,
 ) -> dict[str, Any]:
     worker_id = f"worker-{index:04d}"
-    worker_dir = output / worker_id
-    worker_dir.mkdir(mode=0o700, exist_ok=True)
-    worker_dir.chmod(0o700)
-    prompt_path = worker_dir / "prompt.txt"
-    prompt = (
-        base_prompt.strip()
-        + "\n\nFan-out response contract: return only one JSON object, without Markdown "
-        "fences, with exactly these fields: worker_id, outcome, summary, result_json. "
-        f"Your worker_id is {worker_id}. outcome must be completed, blocked, or failed. "
-        "summary must be a non-empty string of at most 2000 characters. result_json "
-        "must be a JSON-encoded object containing your task-specific answer. "
-        "Use your normal tools and permissions; report blocked if required tools "
-        "or permissions are unavailable.\n"
-    )
-    write_private(prompt_path, prompt.encode("utf-8"))
+    prompt_path = write_worker_prompt(output, worker_id, base_prompt)
     command = [
-        muse_path,
+        executable_path,
         "exec",
         "--json",
         "--no-session-log",

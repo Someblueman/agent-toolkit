@@ -32,6 +32,9 @@ Legend: ✅ supported · 🟡 partial · ❌ not supported · 🚧 scaffold only
 - **Muse**: Worker harness via `--harness muse`; native headless CLI, normal permissions,
   single attempt, and validated terminal JSON receipts. Uses its native model default
   unless `--model` is supplied.
+- **Pi**: Native ephemeral JSON CLI worker via `--harness pi`, with terminal-message
+  receipt validation and the shared timeout/concurrency limits. Native model selection
+  can be overridden using `--model`.
 - **Claude Code & Pi**: Full support as CLI caller orchestrators invoking `tools/fanout/bin/fanout`.
 
 ---

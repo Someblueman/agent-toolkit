@@ -7,7 +7,7 @@ import json
 import os
 import signal
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
@@ -15,9 +15,60 @@ RECEIPT_KEYS = {"worker_id", "outcome", "summary", "result_json"}
 OUTCOMES = {"completed", "blocked", "failed"}
 
 
+async def capture_worker_errors(
+    worker_id: str, worker: Coroutine[Any, Any, dict[str, Any]]
+) -> dict[str, Any]:
+    """Preserve one worker's execution failure without discarding its siblings."""
+    try:
+        return await worker
+    except (OSError, ValueError, TypeError) as error:
+        attempt = {
+            "attempt": 1,
+            "status": "runner_error",
+            "error": f"{type(error).__name__}: {error}",
+        }
+        return {
+            "worker_id": worker_id,
+            "status": "runner_error",
+            "attempt_count": 1,
+            "attempts": [attempt],
+        }
+
+
 def write_private(path: Path, data: bytes) -> None:
     path.write_bytes(data)
     path.chmod(0o600)
+
+
+def write_worker_prompt(output: Path, worker_id: str, base_prompt: str) -> Path:
+    worker_dir = output / worker_id
+    worker_dir.mkdir(mode=0o700, exist_ok=True)
+    worker_dir.chmod(0o700)
+    prompt_path = worker_dir / "prompt.txt"
+    prompt = (
+        base_prompt.strip()
+        + "\n\nFan-out response contract: return only one JSON object, without Markdown "
+        "fences, with exactly these fields: worker_id, outcome, summary, result_json. "
+        f"Your worker_id is {worker_id}. outcome must be completed, blocked, or failed. "
+        "summary must be a non-empty string of at most 2000 characters. result_json "
+        "must be a JSON-encoded object containing your task-specific answer. "
+        "Use your normal tools and permissions; report blocked if required tools "
+        "or permissions are unavailable. result_json is a STRING, not a nested object. "
+        "Use this exact outer shape, replacing the example answer:\n"
+        + json.dumps(
+            {
+                "worker_id": worker_id,
+                "outcome": "completed",
+                "summary": "Completed the task",
+                "result_json": json.dumps(
+                    {"answer": "replace with task-specific fields"}
+                ),
+            }
+        )
+        + "\n"
+    )
+    write_private(prompt_path, prompt.encode("utf-8"))
+    return prompt_path
 
 
 def validate_receipt(
@@ -37,7 +88,7 @@ def validate_receipt(
             None,
             f"structured_output worker_id '{value.get('worker_id')}' does not match assigned worker '{worker_id}'",
         )
-    if value.get("outcome") not in OUTCOMES:
+    if not isinstance(value.get("outcome"), str) or value["outcome"] not in OUTCOMES:
         return None, "outcome must be completed, blocked, or failed"
 
     summary = value.get("summary")

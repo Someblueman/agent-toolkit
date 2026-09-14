@@ -1,16 +1,16 @@
 ---
 name: fanout
-description: Delegate tasks to bounded concurrent workers via Agy (Gemini), OpenCode (DeepSeek) or Muse and collect structured results. Load when delegating independent analysis, multi-model reviews, parallel investigations, or consensus checks across non-Codex models.
+description: Delegate tasks to bounded concurrent workers via Agy (Gemini), OpenCode (DeepSeek), Muse, or Pi and collect structured results. Load when delegating independent analysis, multi-model reviews, parallel investigations, or consensus checks across external harnesses.
 ---
 
 # Fanout Task Delegation
 
-Delegate bounded subtasks, architectural reviews, or exploratory investigations to parallel one-shot workers running in separate harnesses (Agy / Gemini, OpenCode / DeepSeek, and Muse). Workers execute in isolated process groups under strict supervisor deadlines, emit structured results conforming to JSON schemas, and record full attempt provenance in a deterministic `packet.json`.
+Delegate bounded subtasks, architectural reviews, or exploratory investigations to parallel one-shot workers running in separate harnesses (Agy / Gemini, OpenCode / DeepSeek, Muse, and Pi). Workers execute in isolated process groups under strict supervisor deadlines, emit structured results conforming to JSON schemas, and record full attempt provenance in a deterministic `packet.json`.
 
 ## When to load
 
 Load this skill whenever:
-- You need independent, non-Codex model reviews (e.g. Gemini 3.7 Flash via Agy, DeepSeek V4.1 Flash via OpenCode, or Muse).
+- You need independent reviews through external harnesses (e.g. Gemini 3.7 Flash via Agy, DeepSeek V4.1 Flash via OpenCode, Muse, or Pi).
 - You want to gather multiple parallel perspectives or consensus checks on code, architecture, or plan proposals.
 - You need to run exploratory code investigations without polluting your current agent context window.
 - You want fault-tolerant multi-worker delegation with explicit K-of-N quorum guarantees.
@@ -24,14 +24,14 @@ and use its plain-text absolute path as `TOOLKIT_ROOT`; do not execute or source
 For other detached copies, require an explicit toolkit location. Verify
 `$TOOLKIT_ROOT/tools/fanout/bin/fanout` exists and is executable before dispatching.
 If the checkout moved, rerun its installer to refresh the location. The selected harness
-(Agy, OpenCode, or Muse) must also be installed and authenticated; skill installation does not
+(Agy, OpenCode, Muse, or Pi) must also be installed and authenticated; skill installation does not
 provision it. Do not assume the target repository contains the tool. Schema-valid receipts
 establish structure, not grounded evidence; independently inspect cited files and commands.
 
 ```sh
 "$TOOLKIT_ROOT/tools/fanout/bin/fanout" <prompt_file> \
   --output <output_dir> \
-  [--harness {agy,opencode,muse}] \
+  [--harness {agy,opencode,muse,pi}] \
   [--workers <count>] \
   [--concurrency <count>] \
   [--min-results <count>] \
@@ -49,12 +49,12 @@ establish structure, not grounded evidence; independently inspect cited files an
 |---|---|---|---|
 | `<prompt_file>` | Positional Path | *Required* | Path to the markdown or text prompt file describing the task. |
 | `--output` | Path | *Required* | Destination directory for results and `packet.json` (must not exist or be empty). |
-| `--harness` | `agy` \| `opencode` \| `muse` | `agy` | Execution harness to use. |
+| `--harness` | `agy` \| `opencode` \| `muse` \| `pi` | `agy` | Execution harness to use. |
 | `--workers` | Integer (1..50) | `4` | Total number of worker instances to launch. |
 | `--concurrency` | Integer (1..workers) | `min(4, workers)` | Maximum concurrent worker processes in flight. |
 | `--min-results` | Integer (1..workers) | `workers` | Minimum valid results needed for exit code 0 (K-of-N threshold). |
 | `--timeout-seconds` | Float (> 1.0) | `300.0` | Per-attempt execution timeout in seconds. |
-| `--model` | String | Harness default | Model route override (`gemini-3.7-flash-low` for Agy, `opencode-go/deepseek-v4.1-flash` for OpenCode; Muse uses its native default unless overridden). |
+| `--model` | String | Harness default | Model route override (`gemini-3.7-flash-low` for Agy, `opencode-go/deepseek-v4.1-flash` for OpenCode; Muse and Pi use their native defaults unless overridden). |
 | `--agent` | String | `plan` | OpenCode agent profile (only applicable when `--harness opencode`). |
 | `--working-directory`| Path | Current directory | Working directory context for worker processes. |
 | `--agy-retries` | `0` \| `1` | `1` | Max transient retries (timeout/nonzero) for Agy workers. |
@@ -87,10 +87,15 @@ Choose the harness matching the task characteristics and isolation requirements:
 - **Best For**: Fast second opinions, architectural review, risk analysis, code sanity checks, multi-agent advisory councils.
 
 ### 2. OpenCode Harness (`--harness opencode`)
-- **Default Model**: `opencode-go/deepseek-v4.1-flash`. Fanout disables thinking for this
-  model inside the private worker server because DeepSeek thinking mode rejects the
-  forced tool choice used for structured receipts. Other models retain their settings.
-- **Execution Mode**: Spawns an ephemeral OpenCode SDK v2 server per worker via `lib/opencode_worker.mjs` on an isolated TCP port.
+- **Default Model**: `opencode-go/deepseek-v4.1-flash`. Uses the model's normal thinking
+  settings. Fanout requests a JSON final answer and validates it locally; it does not use
+  forced structured-output tool calls or disable reasoning.
+- **Execution Mode**: Spawns an ephemeral OpenCode SDK v2 server per worker on a private
+  port and database (`OPENCODE_DB`). Submits once with `promptAsync`, then polls short
+  status/message requests until a completed assistant answer or the supervisor deadline.
+  Injected configuration is preserved. The installed goal plugin's state is redirected with
+  `OPENCODE_GOAL_STATE_PATH` to the worker output directory. Explicit plugin options can
+  override that environment setting; other plugins keep their native behavior.
 - **Isolation & Tools**: Uses the specified `--agent` profile (default: `plan`, or `build`, etc.) with that agent's configured tools (such as `read`, `grep`, `glob`, `bash`).
 - **Retry Policy**: Single attempt per worker (no automatic retry).
 - **Universal Receipt**:
@@ -124,7 +129,28 @@ Choose the harness matching the task characteristics and isolation requirements:
   Token/cost totals remain `null` when Muse does not supply them in this result path.
 
 
+### 4. Pi harness (`--harness pi`)
+
+- Runs `pi --mode json --print --no-session -- @<prompt-file>` in the requested directory.
+- Uses Pi's native model/provider selection unless `--model <provider/id>` is supplied.
+  Pi also accepts its native thinking suffix (for example `provider/id:high`). The packet
+  records `model: null` when the caller did not specify an override.
+- Keeps normal tools, extensions, project trust, and permissions. Fanout supplies no
+  approval bypass and does not disable context or extension discovery.
+- Uses one process attempt and the shared concurrency, timeout, cancellation, and output
+  validation boundaries. Native Pi retry events do not count as terminal completion.
+- Validates the final assistant message in the final `agent_end` event, requiring
+  `stopReason: stop` and the same receipt fields as OpenCode/Muse. Streamed text, tool
+  output, aborted/error/length-limited completions, and incomplete streams do not count.
+- Stores private `prompt.txt`, `stdout.jsonl`, and `stderr.log`; aggregates native usage.
+
 ## Result interpretation (`packet.json`)
+
+Worker execution errors (including OS launch/port errors) are retained as `runner_error`
+attempts, so sibling results and `packet.json` survive. CLI validation errors remain exit 2.
+There are no automatic OpenCode, Muse, or Pi task resubmissions. A native provider or
+harness can have its own retries within the fanout deadline. Do not repeatedly rerun a
+mutation-capable task after a transport error: inspect its retained evidence first.
 
 All execution results are compiled into `<output_dir>/packet.json` (permissions `0600`). The JSON schema version 3 structure is:
 

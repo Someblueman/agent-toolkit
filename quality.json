@@ -14,7 +14,8 @@
     "scripts/install.sh",
     "scripts/install_codex.py",
     "scripts/test_install.py",
-    "scripts/test_install_packages.py"
+    "scripts/test_install_packages.py",
+    "tools/fanout"
   ],
   "exclude": [
     ".git/*",
@@ -195,6 +196,33 @@
       "stage": "full",
       "failure_codes": [
         1
+      ]
+    },
+    {
+      "name": "Fanout behavior",
+      "kind": "test",
+      "tool": "python-runtime",
+      "args": [
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/fanout/tests",
+        "-p",
+        "test_*.py",
+        "-v"
+      ],
+      "patterns": [
+        "tools/fanout/*"
+      ],
+      "files": false,
+      "scope": "project",
+      "stage": "full",
+      "failure_codes": [
+        1
+      ],
+      "inputs": [
+        "skills/fanout/*"
       ]
     }
   ],
