@@ -19,12 +19,15 @@ User-agreed direction:
   only advising the caller or appointing one implementation worker.
 - Constructive criticism should use strong models to give actionable feedback directly
   to the agent that invoked fanout, helping that agent improve its current work.
+- Workflows must be model-agnostic. Users must be able to add, replace, or remove models
+  through configuration, including adding a future GLM-5.3 reviewer without code or prompt edits.
 
 Everything below is a recommendation unless marked as verified current behavior.
 Exact rosters, routes, limits, and configuration syntax remain proposed.
 
-Recommend named recipes over the existing fanout executor. A recipe defines purpose,
-roles, model routes, expected evidence, and the caller's handoff procedure. The executor
+Recommend model-agnostic workflow recipes over the existing fanout executor. A workflow
+defines purpose, roles, expected evidence, and the caller's handoff procedure. A separate
+configurable roster assigns those roles to harnesses and models. The executor
 runs one bounded round of independently assigned workers. The calling agent handles
 decomposition, verification, integration, and any explicitly requested next round.
 Do not build a general graph scheduler, recursive agent team, or autonomous repair loop.
@@ -60,18 +63,23 @@ Do not build a general graph scheduler, recursive agent team, or autonomous repa
 
 ## Proposed workflows
 
-| Workflow | Initial model/role proposal | What makes it distinct | Completion evidence |
+| Workflow | Model-independent assignments | What makes it distinct | Completion evidence |
 | --- | --- | --- | --- |
-| `review-plan` | Agy / Gemini 3.8 Flash High challenges architecture and assumptions; Claude Code / Fable challenges feasibility, missing requirements, and verification | Independent reviews of the same plan and relevant source; each reviewer also reports any critical issue outside its assigned focus | Concrete gaps tied to plan sections or source, consequences, proposed revisions, unresolved assumptions, and disagreement preserved |
-| `implement` | Allocate independent work items across Pi / DeepSeek Flash and Claude Code / a configured medium-cost model; allocate according to coupling and risk, not random assignment | Each worker receives one owned work item, its own checkout, acceptance checks, and a shared interface agreement | Task-owned diff/commit, actual checks and results, remaining blockers; caller subsequently verifies the integrated result |
-| `bug-hunt` | Pi / DeepSeek traces code paths and coverage; Agy / Gemini High probes boundary cases; Claude Code / Fable examines suspected causes and counterexamples | Independent hypotheses with deliberately different focus; findings must distinguish observation, reproduction, and inference | File/line or stable symbol, trigger, expected/actual behavior, reproduction or explicit evidence gap; caller verifies and deduplicates |
-| `critique` | Agy / Gemini 3.8 Flash High challenges assumptions and alternatives; Claude Code / Fable examines usefulness, clarity, completeness, and concrete improvements | Strong models advise the calling agent on its current answer, design, code, or approach; feedback addresses the user's objective and preserves sound work | Specific strengths to retain, prioritized concerns with evidence and suggested improvements, tradeoffs, and uncertainties; caller records its response and verifies any revisions |
+| `review-plan` | Reviewers examine architecture, assumptions, feasibility, missing requirements, and verification; optional individual focus comes from roster configuration | Independent reviews of the same plan and relevant source; all reviewers can flag critical issues outside their focus | Concrete gaps tied to plan sections or source, consequences, proposed revisions, unresolved assumptions, and disagreement preserved |
+| `implement` | Implementers receive separate owned work items and agreed interfaces; caller selects a configured roster member for each item | Each worker has its own checkout, acceptance checks, and shared interface agreement | Task-owned diff/commit, actual checks and results, remaining blockers; caller subsequently verifies the integrated result |
+| `bug-hunt` | Investigators trace code paths, probe boundaries, and test suspected causes; optional individual focus comes from roster configuration | Independent hypotheses with deliberately different focus; findings distinguish observation, reproduction, and inference | File/line or stable symbol, trigger, expected/actual behavior, reproduction or explicit evidence gap; caller verifies and deduplicates |
+| `critique` | Critics assess assumptions, alternatives, usefulness, clarity, and completeness; optional individual focus comes from roster configuration | Models advise the calling agent on its current answer, design, code, or approach against the user's objective | Strengths to retain, prioritized concerns with evidence and suggested improvements, tradeoffs, and uncertainties; caller records its response and verifies revisions |
 
-These are starting hypotheses for qualification, not model rankings. Keep the model mix
-editable without rewriting role instructions. Pin explicit routes in shipped workflows;
-where a native alias is used, record both the requested alias and observed model when
-available. The exact Fable generation and medium-cost Claude model need selection and
-native validation before shipping. Do not silently substitute today's native default.
+Ship editable starter rosters: Gemini High plus Claude Fable for plan review and critique;
+a DeepSeek/Gemini/Claude mix for bug hunting; a DeepSeek and medium-cost Claude pool for
+implementation. These are initial configuration proposals, not required model families or
+proven rankings. Any supported harness/model can fill the appropriate workflow role.
+An added reviewer gets the workflow's complete review instructions automatically; a focus
+is optional and does not require inventing a new role or updating a prompt template.
+
+Keep explicit model routes in roster data. Record requested aliases and observed models
+when available. Exact starter Claude routes still need qualification. Model names must
+not appear in workflow logic, result schemas, completion rules, or role prompts.
 
 Do not route two workers through Pi and OpenCode to the same DeepSeek model and describe
 that as independent model-family coverage. Harness diversity and model diversity are
@@ -110,9 +118,11 @@ The user sees the consequential improvements and unresolved disagreements, witho
 requiring a transcript of the exchange. Preserve the detailed disposition with the run
 artifacts so feedback consumption is reviewable.
 
-Require both proposed critic roles for full coverage, while retaining partial feedback
-when one fails. Separate critique delivery from the caller's subsequent revision and
-verification. Default to one critique round. Do not loop until both models approve,
+Require feedback from every configured critic for full coverage by default, while
+retaining partial feedback when one fails. The critic roster may contain any positive
+number of members; no Gemini/Claude pair is mandatory. Separate critique delivery from
+the caller's subsequent revision and verification. Default to one critique round.
+Do not loop until the critics approve,
 allow recursive fanout, or transfer final responsibility to a critic.
 
 ## Product surface and configuration
@@ -127,6 +137,12 @@ Natural language remains the main entry point through `skills/fanout/SKILL.md`:
 >
 > “Get constructive criticism from strong models on your current approach, then use
 > that feedback to improve it.”
+>
+> “Add GLM-5.3 through my Pi provider to future plan-review runs.”
+
+The last request edits the selected user roster configuration, preserving other members
+and workflows. It does not alter workflow instructions or launch a review. Resolve an
+ambiguous provider route before saving it; do not guess an endpoint or provision credentials.
 
 Proposed CLI, retaining the existing invocation form:
 
@@ -145,28 +161,79 @@ creating output/worktree state. It can report missing executables; it cannot pro
 authentication, quota, or model availability without a real provider call. This is an
 inspection feature, not a mandatory approval step for already-authorized execution.
 
-Store canonical named JSON recipes and their role prompts within `skills/fanout/`, with
-versioned recipe fields and relative references. The tool reads them from its known toolkit
-root; installed skill copies remain installer outputs. Follow the existing package ownership
-contract. Keep model selection, role prompts, and result schemas in the same package.
+### Configuring models independently
 
-Permit an explicit `--workflow-file /absolute/path.json` for a user's complete custom
-recipe. Do not automatically execute repository-local presets, load shell snippets, or
-introduce layered global/project/environment merging. Harness adapters accept validated
-native fields, not arbitrary argv fragments or executable paths supplied by recipes.
+Store canonical workflow definitions, role prompts, schemas, and starter rosters together
+under `skills/fanout/`, but as separate files. The tool reads those canonical sources from
+its known toolkit root. Installed copies remain installer outputs. User roster configuration
+lives outside the package and must survive toolkit updates without being overwritten.
+
+Proposed user file: `${XDG_CONFIG_HOME:-~/.config}/agent-toolkit/fanout.json`, resolving
+`~` as the user's home, not as literal text. `--config /path/to/fanout.json` selects an
+alternative complete user configuration instead of that default path. Do not stack both
+files or automatically discover repository-local configuration.
+
+A user file overrides only the workflows it names. For each named workflow its `members`
+list replaces the entire starter roster; never concatenate, merge by array position, or
+implicitly retain a removed default. Unspecified workflows use shipped starter rosters.
+A present but invalid file fails visibly; only an absent default file uses all defaults.
+An explicitly selected missing file is an error. Display the effective config source in
+`--describe` and retain its resolved content/hash in the run packet.
+
+Illustrative user config after adding GLM to plan review:
+
+```json
+{
+  "version": 1,
+  "workflows": {
+    "review-plan": {
+      "members": [
+        {"id": "gemini", "harness": "agy", "model": "gemini-3.8-flash-high"},
+        {"id": "claude", "harness": "claude", "model": "claude-fable-5-1"},
+        {"id": "glm", "harness": "pi", "model": "YOUR_PROVIDER/glm-5.3"}
+      ]
+    }
+  }
+}
+```
+
+`YOUR_PROVIDER/glm-5.3` is a placeholder for a future authenticated native route, not a
+claim that this model/provider combination is available today. Adding this member is the
+whole workflow configuration change once the chosen harness supports that route. No
+fanout code, skill instructions, schemas, or completion logic should need editing.
+
+Members have a unique stable id, harness, native model route, optional supported native
+settings (effort or OpenCode agent profile), and optional focus. The workflow supplies
+the common role and evidence contract.
+Same-harness different-model members and repeated models with distinct ids/focus are
+valid. Do not maintain an allowlist of model names in fanout: adapters pass opaque native
+routes through. Validate harness support and configuration shape locally; model/provider
+availability remains a native runtime concern and cannot be established by a syntax check.
+Adding an entirely new harness still requires an adapter; adding a model to an existing
+harness must not. Never embed credentials, arbitrary argv, or executable paths in rosters.
+Respect harness capabilities: a read-only Agy worker cannot fill an implementation
+assignment. Reject incompatible assignments before dispatch rather than changing permissions.
+
+For `implement`, the roster is the available implementer pool. Each work assignment names
+one member id; only assigned items spawn workers. An unselected pool member is not a
+missing result. For the other workflows, each configured member spawns one worker with
+the shared target plus its optional focus. Validate unique ids and nonempty rosters.
 
 Workflow mode owns its roster: reject ambiguous global `--harness`, `--model`, `--workers`,
-`--agent`, and `--min-results` overrides. Concurrency and timeout overrides may lower or
-explicitly replace documented limits, and the resolved values must appear in the plan
-and packet. Global flags keep their existing meaning outside workflow mode. Add targeted
-per-role model overrides only if actual use demonstrates a need beyond an explicit recipe.
+`--agent`, and `--min-results` overrides. Concurrency and timeout overrides may explicitly
+replace documented limits; record resolved values in description output and packets.
+Global flags keep their existing meaning outside workflow mode. Custom workflow semantics
+and a configuration editor UI are deferred; ordinary JSON edits and agent-assisted roster
+updates satisfy the requested model configurability without copying whole recipes.
 
 ## Execution and evidence contract
 
 Normalize resolved work into concrete worker specifications: unique id, role, harness,
 requested model/native effort settings, assignment, input identity, working directory,
 and deadline. Use one shared semaphore across the entire roster, including retries.
-Fail invalid recipes or missing required executable dependencies before dispatch starts.
+Fail invalid recipes, rosters, assignment references, or missing required executable
+dependencies before dispatch starts. Resolve configuration once per run so an edit during
+execution affects the next invocation, not workers already scheduled.
 
 Each worker receives the shared task plus its role and individual assignment. A recipe
 may reuse a role for multiple owned implementation items; the number of implementation
@@ -193,18 +260,26 @@ not duplicated runners or heuristic fallback decoders. Update skill ingestion an
 for both contracts and test unchanged v3 behavior. Revisit universal v4 migration only
 with an explicit external-consumer migration decision.
 
-The workflow packet records recipe version/hash, resolved roster, per-worker requested
-and observed model (unknown stays null), role, assignment/input hash, checkout/base,
+The workflow packet records recipe version/hash, selected user configuration/hash,
+resolved roster, per-worker requested and observed model (unknown stays null), role,
+assignment/input hash, checkout/base,
 attempt artifacts, native completion, and validated payload. Actual token/cost metadata
 can be incomplete; unknown is not zero. No cross-provider dollar cap is promised by v1.
 Bound spend operationally through a visible finite roster and deadlines.
 
-Completion rules follow required roles/assignments, not just a count. For `review-plan`,
-both distinct review roles are required; two reports from one route cannot satisfy the
-other. Implementation requires every assigned item. Bug-hunt requires its configured
-perspectives; critique requires both critic roles. Retain partial reports and explicit
-missing coverage when any required role fails. Never label a transport failure as
-“no issues found” or substitute a cheaper route.
+Completion derives from the resolved roster and assignments, never hard-coded model
+names, families, or counts. In review and critique workflows, every configured member is
+required by default. Adding a third GLM reviewer automatically requires its receipt;
+removing a reviewer removes that requirement. Two receipts from one member cannot fill
+another member's slot. Implementation requires every assigned item, regardless of which
+pool member produced it. There is no minimum of two models: a one-member roster runs and
+is honestly described as one perspective. Preserve per-member provenance and do not
+claim model diversity just because a numeric count was met.
+
+Retain partial reports and explicit missing member/assignment coverage when any required
+worker fails. Never label a transport failure as “no issues found” or substitute another
+route. Configurable partial quorum can be considered later; v1 uses all resolved workers
+without introducing model-specific completion rules.
 
 The caller produces the human synthesis: verified findings, disagreements, uncertainties,
 and next actions. Do not add a paid judge by default. A stronger follow-up is justified
@@ -212,8 +287,9 @@ by a specific unresolved question and runs only within the user's scope and limi
 
 ## Parallel implementation ownership
 
-The calling agent decomposes the request before dispatch. Each assignment states owned
-files or modules (including allowed new files), agreed interfaces, acceptance commands,
+The calling agent decomposes the request before dispatch. Each assignment names its
+configured implementer member and states owned files or modules (including allowed new
+files), agreed interfaces, acceptance commands,
 dependencies, an explicit working directory, and base revision. Independent items run
 together; dependent items run in subsequent caller-controlled rounds.
 
@@ -247,8 +323,15 @@ must not announce feature completion before integration and final verification s
    description output, role prompts, and skill routing. Prove invalid/unknown fields fail
    before dispatch, describe performs no launches/writes, missing roles fail completion,
    and model failures cannot become substitutions or false clean reviews.
+   Prove roster overrides replace only the named workflow, explicit config selection
+   replaces the default user file, and malformed/empty/duplicate-id configurations fail
+   before dispatch. Append a synthetic future model route through an existing harness:
+   `--describe` and execution must include it without changing code or prompts. Remove
+   and replace members and verify both dispatch and completion follow the resolved roster.
+   Prove other workflow defaults and user edits survive a toolkit refresh. For implementation,
+   reject references to absent roster members and do not spawn unassigned pool members.
    For critique, validate actionable feedback fields and permit justified empty lists;
-   prove feedback from both critics and their disagreement survive packet ingestion.
+   prove feedback and disagreements from a configurable roster survive packet ingestion.
 3. **Owned implementation.** Add assignment validation and ownership evidence. Exercise
    two workers making disjoint changes in authorized temporary checkouts; reject duplicate
    checkouts, overlapping ownership, and missing dependency prerequisites. Detect an
@@ -263,17 +346,21 @@ must not announce feature completion before integration and final verification s
    suggestion. Also verify missing context is surfaced and no second round starts implicitly.
    Compare verified coverage, false positives, useful changes, latency, and available
    cost against plain fanout. These small trials
-   qualify usability, not a universal model ranking. Refresh the installed skill through
+   qualify usability, not a universal model ranking. Include one available additional model
+   via configuration only and verify it returns the same workflow contract. Future GLM
+   availability is not a release dependency; fixture coverage proves opaque route forwarding.
+   Refresh the installed skill through
    the normal installer and pass its read-only comparison.
 
 No trials or workflow implementation have been executed as part of this design request.
 
 ## Remaining decisions and handoff
 
-- Recommend the initial model/role mixes above. Confirm the exact Claude Fable route and
-  the medium-cost implementation model during qualification; Gemini's requested high
-  route resolves to the locally listed `gemini-3.8-flash-high`.
-- Recommend deterministic required-role completion, caller-owned synthesis, and caller-owned
+- Model-agnostic configuration is agreed. The proposed user file format, replacement
+  precedence, and starter rosters need qualification; exact starter Claude routes are
+  operational defaults rather than workflow requirements. Future GLM support depends
+  only on an available route in a supported harness, not a workflow redesign.
+- Recommend all-resolved-worker completion, caller-owned synthesis, and caller-owned
   checkout preparation/integration. A fully unattended multistage workflow engine is a
   separate scope decision, not implied by named fanout workflows.
 - No workflow-wide price ceiling has been specified. Keep limits explicit and costs
