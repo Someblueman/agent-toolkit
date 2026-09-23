@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""Asynchronous, isolated Claude replies for local Codex tasks."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import time
+import uuid
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+
+from state import (
+    ACTIVE,
+    TERMINAL,
+    build_prompt,
+    exchange_lock,
+    exchange_path,
+    latest_turn,
+    private_dir,
+    read_status,
+    refreshed_status,
+    state_root,
+    turn_path,
+    write_json,
+    write_private,
+    write_status,
+)
+
+WORKER = Path(__file__).resolve().parents[1] / "lib/worker.py"
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+
+
+def parser() -> argparse.ArgumentParser:
+    cli = argparse.ArgumentParser(description=__doc__)
+    cli.add_argument("--state-dir", help="Private exchange state directory")
+    commands = cli.add_subparsers(dest="command", required=True)
+    start = commands.add_parser(
+        "start", help="Start a new exchange and return immediately"
+    )
+    start.add_argument("--working-directory", default=".")
+    start.add_argument("--claude", default="claude", help="Claude Code executable")
+    start.add_argument("--model", default="opus")
+    start.add_argument("--effort", choices=EFFORTS, default="high")
+    start.add_argument("--timeout-seconds", type=float, default=300)
+    start.add_argument("--max-output-bytes", type=int, default=1_000_000)
+    reply = commands.add_parser("reply", help="Continue a completed exchange")
+    reply.add_argument("exchange_id")
+    for command in (start, reply):
+        message = command.add_mutually_exclusive_group(required=True)
+        message.add_argument("--message")
+        message.add_argument("--message-file", help="UTF-8 file, or - for stdin")
+    for name in ("status", "result", "cancel", "wait"):
+        command = commands.add_parser(name)
+        command.add_argument("exchange_id")
+        if name == "wait":
+            command.add_argument("--timeout-seconds", type=float, default=30)
+    return cli
+
+
+def message_text(args: argparse.Namespace) -> str:
+    if args.message is not None:
+        message = args.message
+    elif args.message_file == "-":
+        message = sys.stdin.read()
+    else:
+        message = Path(args.message_file).read_text(encoding="utf-8")
+    if not message.strip():
+        raise ValueError("message must not be empty")
+    return message
+
+
+def start_exchange(root: Path, args: argparse.Namespace) -> tuple[Path, int]:
+    if args.timeout_seconds <= 0 or args.max_output_bytes < 1024:
+        raise ValueError(
+            "timeout must be positive and max output must be at least 1024 bytes"
+        )
+    executable = shutil.which(args.claude)
+    if executable is None:
+        raise ValueError(f"Claude Code executable not found: {args.claude}")
+    directory = Path(args.working_directory).expanduser().resolve()
+    if not directory.is_dir():
+        raise ValueError(f"working directory does not exist: {directory}")
+    exchange = root / uuid.uuid4().hex
+    private_dir(exchange / "turns")
+    write_json(
+        exchange / "meta.json",
+        {
+            "schema_version": 1,
+            "id": exchange.name,
+            "created_at": time.time(),
+            "working_directory": str(directory),
+            "claude": executable,
+            "model": args.model,
+            "effort": args.effort,
+            "timeout_seconds": args.timeout_seconds,
+            "max_output_bytes": args.max_output_bytes,
+        },
+    )
+    return exchange, 1
+
+
+def launch(root: Path, args: argparse.Namespace) -> dict:
+    message = message_text(args)
+    if args.command == "start":
+        exchange, turn = start_exchange(root, args)
+    else:
+        exchange = exchange_path(root, args.exchange_id)
+        with exchange_lock(exchange):
+            previous = latest_turn(exchange)
+        refreshed_status(exchange, previous)
+        turn = previous + 1
+    with exchange_lock(exchange):
+        if turn > 1 and latest_turn(exchange) != turn - 1:
+            raise ValueError("another reply started for this exchange")
+        if turn > 1 and read_status(exchange, turn - 1)["state"] not in TERMINAL:
+            raise ValueError("previous Claude reply is still active")
+        prompt = build_prompt(exchange, message)
+        current = turn_path(exchange, turn)
+        if current.exists():
+            raise ValueError("turn already exists")
+        private_dir(current)
+        write_private(current / "message.txt", message)
+        write_private(current / "prompt.txt", prompt)
+        status = {"state": "queued", "created_at": time.time(), "worker_pid": None}
+        write_status(exchange, turn, status)
+        with (current / "worker.log").open("w", encoding="utf-8") as log:
+            worker = subprocess.Popen(
+                [sys.executable, str(WORKER), str(root), exchange.name, str(turn)],
+                stdin=subprocess.DEVNULL,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        status["worker_pid"] = worker.pid
+        write_status(exchange, turn, status)
+    return {"exchange_id": exchange.name, "turn": turn, "state": "queued"}
+
+
+def snapshot(root: Path, exchange_id: str, include_result: bool = False) -> dict:
+    exchange = exchange_path(root, exchange_id)
+    with exchange_lock(exchange):
+        turn = latest_turn(exchange)
+    status = refreshed_status(exchange, turn)
+    result = {"exchange_id": exchange_id, "turn": turn, **status}
+    if include_result and status["state"] == "succeeded":
+        result["response"] = (turn_path(exchange, turn) / "response.txt").read_text(
+            encoding="utf-8"
+        )
+    return result
+
+
+def cancel(root: Path, exchange_id: str) -> dict:
+    exchange = exchange_path(root, exchange_id)
+    with exchange_lock(exchange):
+        turn = latest_turn(exchange)
+        status = read_status(exchange, turn)
+        if status["state"] in ACTIVE and status["state"] != "cancel_requested":
+            status["state"] = "cancel_requested"
+            write_status(exchange, turn, status)
+            pid = status.get("worker_pid")
+            if isinstance(pid, int):
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+    return snapshot(root, exchange_id)
+
+
+def dispatch(root: Path, args: argparse.Namespace) -> dict:
+    if args.command in {"start", "reply"}:
+        private_dir(root)
+        return launch(root, args)
+    if args.command == "cancel":
+        return cancel(root, args.exchange_id)
+    if args.command == "wait":
+        if args.timeout_seconds < 0:
+            raise ValueError("wait timeout must not be negative")
+        deadline = time.monotonic() + args.timeout_seconds
+        while True:
+            result = snapshot(root, args.exchange_id, include_result=True)
+            if result["state"] in TERMINAL or time.monotonic() >= deadline:
+                return result
+            time.sleep(0.2)
+    return snapshot(root, args.exchange_id, include_result=args.command == "result")
+
+
+def main() -> int:
+    os.umask(0o077)
+    args = parser().parse_args()
+    try:
+        result = dispatch(state_root(args.state_dir), args)
+    except (OSError, ValueError, UnicodeError, json.JSONDecodeError) as error:
+        print(f"claude-bridge: {error}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, ensure_ascii=False))
+    if args.command in {"result", "wait"}:
+        if result["state"] in ACTIVE:
+            return 3
+        if result["state"] != "succeeded":
+            return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

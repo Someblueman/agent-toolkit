@@ -26,6 +26,7 @@ description: One-line summary of what this skill does and when to load it.
 ## Existing skills
 
 - [fanout/](fanout/) — model-agnostic review, critique, bug-hunt, and owned implementation workflows.
+- [claude-bridge/](claude-bridge/) — continuing local exchanges with an isolated Claude peer.
 - [code-simplification/](code-simplification/) — diagnose and remove accidental complexity with behavioral-invariance verification.
 - [hardware-aware-optimization/](hardware-aware-optimization/) — hardware-aware optimization playbooks (SIMD, branchless, arenas, lock-free, PGO/LTO).
 - [profiling-software-performance/](profiling-software-performance/) — noise-controlled benchmarking and profiling across systems, managed, and lazy runtimes.
