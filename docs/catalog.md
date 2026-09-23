@@ -7,6 +7,7 @@ The index of everything shippable in this toolkit. Updated when skills, hooks, a
 | Name | Description | Status |
 |------|-------------|--------|
 | [c-engineering](../skills/c-engineering/) | Implement, review, debug, and optimize C programs, libraries, and systems. | stable |
+| [claude-bridge](../skills/claude-bridge/) | Exchange isolated, asynchronous Claude replies with Codex. | draft |
 | [code-simplification](../skills/code-simplification/) | Diagnose and remove accidental complexity; enforce complexity budgets with differential parity testing. | draft |
 | [define-goal](../skills/define-goal/) | Define a clear, bounded goal for the session before acting on it. | stable |
 | [hardware-aware-optimization](../skills/hardware-aware-optimization/) | Hardware-aware optimization playbooks: SIMD, branchless, custom allocators, lock-free, PGO/LTO. | draft |
@@ -66,6 +67,7 @@ Codex's `.system` skills and plugin-cache skills remain vendor-managed; their so
 | Name | Description | Status |
 |------|-------------|--------|
 | [fanout](../tools/fanout/) | Run bounded one-shot local workers (Agy / OpenCode / Muse / Pi) and collect structured results. | stable |
+| [claude-bridge](../tools/claude-bridge/) | Run private, continuing Codex to Claude exchanges in the background. | draft |
 | [quality](../tools/quality/) | Provision pinned linters and run repository-defined behavioral checks through automatic preflight, edit feedback and completion hooks. | draft |
 
 ## Notable scripts

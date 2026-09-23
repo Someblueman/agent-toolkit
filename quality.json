@@ -1,7 +1,7 @@
 {
   "version": 1,
   "verification": {
-    "green": "The shared quality runner, lifecycle hooks, installers and leader completion behavior pass their native regression suites; covered Python sources pass Ruff lint, complexity and formatting checks. Optional native profiles are reported separately when their toolchains are available.",
+    "green": "The shared quality runner, lifecycle hooks, installers, leader completion and Claude bridge behavior pass their native regression suites; covered Python sources pass Ruff lint, complexity and formatting checks. Optional native profiles are reported separately when their toolchains are available.",
     "manual": [],
     "review": false
   },
@@ -15,7 +15,8 @@
     "scripts/install_codex.py",
     "scripts/test_install.py",
     "scripts/test_install_packages.py",
-    "tools/fanout"
+    "tools/fanout",
+    "tools/claude-bridge"
   ],
   "exclude": [
     ".git/*",
@@ -84,7 +85,10 @@
         "hooks/session/quality*.py",
         "skills/team-leader/scripts/*.py",
         "scripts/test_leader_completion.py",
-        "scripts/test_install*.py"
+        "scripts/test_install*.py",
+        "tools/claude-bridge/bin/claude-bridge",
+        "tools/claude-bridge/lib/*.py",
+        "tools/claude-bridge/tests/*.py"
       ],
       "files": true,
       "failure_codes": [
@@ -107,7 +111,10 @@
         "hooks/session/quality*.py",
         "skills/team-leader/scripts/*.py",
         "scripts/test_leader_completion.py",
-        "scripts/test_install*.py"
+        "scripts/test_install*.py",
+        "tools/claude-bridge/bin/claude-bridge",
+        "tools/claude-bridge/lib/*.py",
+        "tools/claude-bridge/tests/*.py"
       ],
       "files": true,
       "failure_codes": [
@@ -196,6 +203,33 @@
       "stage": "full",
       "failure_codes": [
         1
+      ]
+    },
+    {
+      "name": "Claude bridge behavior",
+      "kind": "test",
+      "tool": "python-runtime",
+      "args": [
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/claude-bridge/tests",
+        "-p",
+        "test_*.py",
+        "-v"
+      ],
+      "patterns": [
+        "tools/claude-bridge/*"
+      ],
+      "files": false,
+      "scope": "project",
+      "stage": "full",
+      "failure_codes": [
+        1
+      ],
+      "inputs": [
+        "skills/claude-bridge/*"
       ]
     },
     {

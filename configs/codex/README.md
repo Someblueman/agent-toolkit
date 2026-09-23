@@ -39,6 +39,9 @@ Inspect a conflict before using `--force`, which replaces conflicting selected i
 
 The selected list includes the user-requested `code-simplification`, `hardware-aware-optimization`, and `profiling-software-performance` drafts. Installation does not establish their behavioral correctness or install optional profiling/compiler dependencies. `fanout` is also selected; it locates the standalone tool in this checkout through `agent-toolkit-root.txt`. Agy, OpenCode, Muse, or Pi must be installed and authenticated separately.
 
+`claude-bridge` is selected too. It uses the same checkout pointer to run a local,
+asynchronous Claude Code exchange without loading Claude's user or project customizations.
+
 The anti-bloat script lives at `skills/pragmatic-engineering/scripts/check_anti_bloat.py` and is installed at `~/.codex/scripts/check_anti_bloat.py` for convenience.
 
 ## Repository quality hooks

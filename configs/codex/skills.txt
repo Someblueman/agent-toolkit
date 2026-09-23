@@ -1,4 +1,5 @@
 c-engineering
+claude-bridge
 code-simplification
 define-goal
 fanout

@@ -1,0 +1,3 @@
+interface:
+  display_name: "Claude Bridge"
+  short_description: "Exchange isolated, asynchronous replies with Claude"
