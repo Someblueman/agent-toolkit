@@ -27,6 +27,7 @@ log.write_text(json.dumps({'args': args, 'prompt': prompt, 'environment': {
     key: os.environ.get(key) for key in (
         'CLAUDE_CODE_EFFORT_LEVEL', 'CLAUDE_CODE_DISABLE_AUTO_MEMORY',
         'CLAUDE_CODE_SKIP_PROMPT_HISTORY', 'CLAUDE_CODE_DISABLE_THINKING',
+        'CLAUDE_CODE_DISABLE_1M_CONTEXT',
         'MAX_THINKING_TOKENS')
 }}))
 mode = os.environ.get('FAKE_CLAUDE_MODE', 'success')
@@ -61,6 +62,7 @@ class BridgeTest(unittest.TestCase):
             **os.environ,
             "FAKE_CLAUDE_LOG": str(self.logs),
             "CLAUDE_CODE_DISABLE_THINKING": "1",
+            "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
             "MAX_THINKING_TOKENS": "0",
         }
 
@@ -133,6 +135,7 @@ class BridgeTest(unittest.TestCase):
             followup["environment"]["CLAUDE_CODE_SKIP_PROMPT_HISTORY"], "1"
         )
         self.assertIsNone(followup["environment"]["CLAUDE_CODE_DISABLE_THINKING"])
+        self.assertIsNone(followup["environment"]["CLAUDE_CODE_DISABLE_1M_CONTEXT"])
         self.assertIsNone(followup["environment"]["MAX_THINKING_TOKENS"])
 
     def test_active_turn_rejects_followup_and_cancel_stops_it(self) -> None:
@@ -144,6 +147,24 @@ class BridgeTest(unittest.TestCase):
         self.assertIn(cancelled["state"], {"cancel_requested", "cancelled"})
         final = self.cli("wait", exchange_id, "--timeout-seconds", "5", code=1)
         self.assertEqual(final["state"], "cancelled")
+
+    def test_long_exchange_is_sent_without_character_truncation(self) -> None:
+        message = "Evidence " * 26_000
+        message_file = self.root / "long-message.txt"
+        message_file.write_text(message)
+        first = self.cli(
+            "start", "--claude", str(self.claude), "--message-file", str(message_file)
+        )
+        exchange_id = first["exchange_id"]
+        self.cli("wait", exchange_id, "--timeout-seconds", "5")
+        self.cli("reply", exchange_id, "--message", "Follow up")
+        self.cli("wait", exchange_id, "--timeout-seconds", "5")
+        prompts = [
+            json.loads(path.read_text())["prompt"] for path in self.logs.iterdir()
+        ]
+        followup = next(prompt for prompt in prompts if "Follow up" in prompt)
+        self.assertIn(message, followup)
+        self.assertIn("first response", followup)
 
     def test_concurrent_followups_create_only_one_turn(self) -> None:
         first = self.start()

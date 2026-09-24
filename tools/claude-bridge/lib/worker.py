@@ -163,6 +163,7 @@ def run(root: Path, exchange_id: str, turn: int) -> None:
             write_status(exchange, turn, status)
         environment = os.environ.copy()
         environment.pop("CLAUDE_CODE_DISABLE_THINKING", None)
+        environment.pop("CLAUDE_CODE_DISABLE_1M_CONTEXT", None)
         environment.pop("MAX_THINKING_TOKENS", None)
         environment["CLAUDE_CODE_EFFORT_LEVEL"] = meta["effort"]
         environment["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"

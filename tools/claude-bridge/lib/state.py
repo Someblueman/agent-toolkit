@@ -14,7 +14,6 @@ from typing import Any
 
 ACTIVE = {"queued", "running", "cancel_requested"}
 TERMINAL = {"succeeded", "failed", "timed_out", "cancelled"}
-MAX_PROMPT_CHARS = 200_000
 
 
 def state_root(override: str | None) -> Path:
@@ -156,9 +155,4 @@ def build_prompt(exchange: Path, message: str) -> str:
             + "\n</claude_response>"
         )
     parts.append("<codex_message>\n" + message + "\n</codex_message>")
-    prompt = "\n\n".join(parts)
-    if len(prompt) > MAX_PROMPT_CHARS:
-        raise ValueError(
-            "exchange context exceeds 200,000 characters; start a new exchange with a summary"
-        )
-    return prompt
+    return "\n\n".join(parts)
