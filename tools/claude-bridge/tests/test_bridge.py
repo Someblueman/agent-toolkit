@@ -166,6 +166,53 @@ class BridgeTest(unittest.TestCase):
         self.assertIn(message, followup)
         self.assertIn("first response", followup)
 
+    def test_default_and_reply_timeout_override(self) -> None:
+        first = self.cli(
+            "start", "--claude", str(self.claude), "--message", "Default limit"
+        )
+        exchange = self.state / first["exchange_id"]
+        self.assertEqual(
+            json.loads((exchange / "meta.json").read_text())["timeout_seconds"], 1800
+        )
+        self.cli("wait", first["exchange_id"], "--timeout-seconds", "5")
+
+        older = self.start(timeout="1")
+        exchange_id = older["exchange_id"]
+        self.cli("wait", exchange_id, "--timeout-seconds", "5")
+        self.cli(
+            "reply",
+            exchange_id,
+            "--timeout-seconds",
+            "3",
+            "--message",
+            "First slow follow-up",
+            mode="slow",
+        )
+        result = self.cli("wait", exchange_id, "--timeout-seconds", "5")
+        self.assertEqual(result["state"], "succeeded")
+        self.assertEqual(result["timeout_seconds"], 3)
+        self.assertEqual(
+            json.loads((self.state / exchange_id / "meta.json").read_text())[
+                "timeout_seconds"
+            ],
+            3,
+        )
+        self.cli(
+            "reply", exchange_id, "--message", "Second slow follow-up", mode="slow"
+        )
+        result = self.cli("wait", exchange_id, "--timeout-seconds", "5")
+        self.assertEqual(result["state"], "succeeded")
+        self.assertEqual(result["timeout_seconds"], 3)
+        self.cli(
+            "reply",
+            exchange_id,
+            "--timeout-seconds",
+            "0",
+            "--message",
+            "Invalid",
+            code=2,
+        )
+
     def test_concurrent_followups_create_only_one_turn(self) -> None:
         first = self.start()
         exchange_id = first["exchange_id"]
@@ -210,6 +257,8 @@ class BridgeTest(unittest.TestCase):
                 )
                 self.assertEqual(result["state"], state)
                 self.assertNotIn("response", result)
+                if state == "timed_out":
+                    self.assertIn("0.3-second turn limit", result["error"])
 
     def test_private_files_and_input_validation(self) -> None:
         first = self.start()

@@ -36,6 +36,9 @@ a request after an uncertain outcome; the bridge never retries automatically. St
 unneeded run with `cancel EXCHANGE_ID`. The tool preserves state across Codex turns but
 does not wake a completed Codex turn on its own.
 
+The default turn limit is 1800 seconds. For an older exchange with a shorter recorded
+limit, pass `reply EXCHANGE_ID --timeout-seconds 1800` once to update this and later turns.
+
 The default model is `opus` at `high` effort. The bridge invokes Claude with restricted
 and safe modes, no tools, and no Claude session persistence. Its local transcript is the
 only exchange history it intentionally supplies. Read

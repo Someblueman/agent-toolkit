@@ -27,10 +27,14 @@ tools/claude-bridge/bin/claude-bridge cancel EXCHANGE_ID
 ```
 
 `--message "short text"` is also accepted. `--message-file -` reads stdin. For tests or
-custom launches, `start` accepts `--claude PATH`, `--timeout-seconds` (default 300), and
+custom launches, `start` accepts `--claude PATH`, `--timeout-seconds` (default 1800), and
 `--max-output-bytes` (default 1,000,000). Pass the global `--state-dir PATH` before the
 command to override the state directory. Create message files with mode `0600` and remove
 them after submission; the bridge keeps its own private copy.
+
+`reply --timeout-seconds N` updates an existing exchange's turn limit for that reply and
+later replies. The default for older exchanges stays as recorded until changed. A
+timed-out turn keeps its status and partial output, if any; the bridge does not retry it.
 
 All commands print JSON with `exchange_id`, `turn`, and `state`. Completed results also
 include `response`, observed model IDs, and cost when Claude reports them. `start`,

@@ -24,6 +24,7 @@ from state import (
     exchange_path,
     latest_turn,
     private_dir,
+    read_json,
     read_status,
     refreshed_status,
     state_root,
@@ -35,6 +36,7 @@ from state import (
 
 WORKER = Path(__file__).resolve().parents[1] / "lib/worker.py"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
+DEFAULT_TURN_TIMEOUT_SECONDS = 1800
 
 
 def parser() -> argparse.ArgumentParser:
@@ -48,10 +50,15 @@ def parser() -> argparse.ArgumentParser:
     start.add_argument("--claude", default="claude", help="Claude Code executable")
     start.add_argument("--model", default="opus")
     start.add_argument("--effort", choices=EFFORTS, default="high")
-    start.add_argument("--timeout-seconds", type=float, default=300)
+    start.add_argument(
+        "--timeout-seconds", type=float, default=DEFAULT_TURN_TIMEOUT_SECONDS
+    )
     start.add_argument("--max-output-bytes", type=int, default=1_000_000)
     reply = commands.add_parser("reply", help="Continue a completed exchange")
     reply.add_argument("exchange_id")
+    reply.add_argument(
+        "--timeout-seconds", type=float, help="Set the limit for this and later turns"
+    )
     for command in (start, reply):
         message = command.add_mutually_exclusive_group(required=True)
         message.add_argument("--message")
@@ -108,6 +115,12 @@ def start_exchange(root: Path, args: argparse.Namespace) -> tuple[Path, int]:
 
 def launch(root: Path, args: argparse.Namespace) -> dict:
     message = message_text(args)
+    if (
+        args.command == "reply"
+        and args.timeout_seconds is not None
+        and args.timeout_seconds <= 0
+    ):
+        raise ValueError("timeout must be positive")
     if args.command == "start":
         exchange, turn = start_exchange(root, args)
     else:
@@ -125,10 +138,20 @@ def launch(root: Path, args: argparse.Namespace) -> dict:
         current = turn_path(exchange, turn)
         if current.exists():
             raise ValueError("turn already exists")
+        meta_path = exchange / "meta.json"
+        meta = read_json(meta_path)
+        if args.command == "reply" and args.timeout_seconds is not None:
+            meta["timeout_seconds"] = args.timeout_seconds
+            write_json(meta_path, meta)
         private_dir(current)
         write_private(current / "message.txt", message)
         write_private(current / "prompt.txt", prompt)
-        status = {"state": "queued", "created_at": time.time(), "worker_pid": None}
+        status = {
+            "state": "queued",
+            "created_at": time.time(),
+            "worker_pid": None,
+            "timeout_seconds": meta["timeout_seconds"],
+        }
         write_status(exchange, turn, status)
         with (current / "worker.log").open("w", encoding="utf-8") as log:
             worker = subprocess.Popen(

@@ -161,6 +161,7 @@ def run(root: Path, exchange_id: str, turn: int) -> None:
             status["state"] = "running"
             status["started_at"] = time.time()
             write_status(exchange, turn, status)
+        timeout_seconds = status.get("timeout_seconds", meta["timeout_seconds"])
         environment = os.environ.copy()
         environment.pop("CLAUDE_CODE_DISABLE_THINKING", None)
         environment.pop("CLAUDE_CODE_DISABLE_1M_CONTEXT", None)
@@ -181,7 +182,7 @@ def run(root: Path, exchange_id: str, turn: int) -> None:
             stop_group(child)
         prompt = (current / "prompt.txt").read_bytes()
         try:
-            stdout, stderr = child.communicate(prompt, timeout=meta["timeout_seconds"])
+            stdout, stderr = child.communicate(prompt, timeout=timeout_seconds)
         except subprocess.TimeoutExpired:
             stop_group(child)
             stdout, stderr = child.communicate()
@@ -191,7 +192,15 @@ def run(root: Path, exchange_id: str, turn: int) -> None:
             write_private(
                 current / "stderr.log", stderr.decode("utf-8", errors="replace")
             )
-            finish(exchange, turn, "cancelled" if cancelled else "timed_out")
+            if cancelled:
+                finish(exchange, turn, "cancelled")
+            else:
+                finish(
+                    exchange,
+                    turn,
+                    "timed_out",
+                    error=f"Claude exceeded {timeout_seconds:g}-second turn limit",
+                )
             return
         record_completion(
             exchange, turn, current, meta, child, stdout, stderr, cancelled
