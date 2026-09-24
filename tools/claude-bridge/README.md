@@ -42,9 +42,10 @@ retry occurs after an uncertain outcome.
 State defaults to `${XDG_STATE_HOME:-~/.local/state}/agent-toolkit/claude-bridge/`.
 Directories use mode `0700`; request, response, status, and raw output files use `0600`.
 Each exchange contains its configured model, effort, workspace path, and numbered turns.
-The prompt for a new turn includes only earlier successful turns. At 200,000 characters,
-the bridge asks Codex to begin a fresh exchange with a summary instead of silently
-dropping context.
+The prompt for a new turn includes only earlier successful turns. The bridge does not
+truncate the exchange or impose a character cap. The selected Claude model's context
+window is measured in tokens, including room for its reply and thinking. If Claude
+rejects a long prompt, start a new exchange with a summary.
 
 ## Verification
 
