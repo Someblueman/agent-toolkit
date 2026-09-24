@@ -19,16 +19,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from state import (
     ACTIVE,
     TERMINAL,
-    build_prompt,
     exchange_lock,
     exchange_path,
     latest_turn,
+    lock_is_held,
     private_dir,
     read_json,
     read_status,
     refreshed_status,
     state_root,
     turn_path,
+    worker_is_alive,
     write_json,
     write_private,
     write_status,
@@ -36,7 +37,7 @@ from state import (
 
 WORKER = Path(__file__).resolve().parents[1] / "lib/worker.py"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
-DEFAULT_TURN_TIMEOUT_SECONDS = 1800
+DEFAULT_TURN_TIMEOUT_SECONDS = 0
 
 
 def parser() -> argparse.ArgumentParser:
@@ -63,7 +64,7 @@ def parser() -> argparse.ArgumentParser:
         message = command.add_mutually_exclusive_group(required=True)
         message.add_argument("--message")
         message.add_argument("--message-file", help="UTF-8 file, or - for stdin")
-    for name in ("status", "result", "cancel", "wait"):
+    for name in ("status", "result", "cancel", "close", "wait"):
         command = commands.add_parser(name)
         command.add_argument("exchange_id")
         if name == "wait":
@@ -84,9 +85,9 @@ def message_text(args: argparse.Namespace) -> str:
 
 
 def start_exchange(root: Path, args: argparse.Namespace) -> tuple[Path, int]:
-    if args.timeout_seconds <= 0 or args.max_output_bytes < 1024:
+    if args.timeout_seconds < 0 or args.max_output_bytes < 1024:
         raise ValueError(
-            "timeout must be positive and max output must be at least 1024 bytes"
+            "timeout must not be negative and max output must be at least 1024 bytes"
         )
     executable = shutil.which(args.claude)
     if executable is None:
@@ -113,14 +114,40 @@ def start_exchange(root: Path, args: argparse.Namespace) -> tuple[Path, int]:
     return exchange, 1
 
 
+def ensure_worker(
+    root: Path, exchange: Path, turn: int, meta: dict, meta_path: Path
+) -> int:
+    if lock_is_held(exchange / "daemon.lock"):
+        return meta["worker_pid"]
+    previous_pid = meta.get("worker_pid")
+    if (
+        previous_pid
+        and _pid_exists(previous_pid)
+        and time.time() - meta.get("worker_started_at", 0) < 10
+    ):
+        raise ValueError("worker is starting; retry shortly")
+    with (exchange / "worker.log").open("a", encoding="utf-8") as log:
+        worker = subprocess.Popen(
+            [sys.executable, str(WORKER), str(root), exchange.name, str(turn)],
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    meta["worker_pid"] = worker.pid
+    meta["worker_started_at"] = time.time()
+    write_json(meta_path, meta)
+    return worker.pid
+
+
 def launch(root: Path, args: argparse.Namespace) -> dict:
     message = message_text(args)
     if (
         args.command == "reply"
         and args.timeout_seconds is not None
-        and args.timeout_seconds <= 0
+        and args.timeout_seconds < 0
     ):
-        raise ValueError("timeout must be positive")
+        raise ValueError("timeout must not be negative")
     if args.command == "start":
         exchange, turn = start_exchange(root, args)
     else:
@@ -132,20 +159,25 @@ def launch(root: Path, args: argparse.Namespace) -> dict:
     with exchange_lock(exchange):
         if turn > 1 and latest_turn(exchange) != turn - 1:
             raise ValueError("another reply started for this exchange")
-        if turn > 1 and read_status(exchange, turn - 1)["state"] not in TERMINAL:
-            raise ValueError("previous Claude reply is still active")
-        prompt = build_prompt(exchange, message)
+        if turn > 1:
+            previous_state = read_status(exchange, turn - 1)["state"]
+            if previous_state not in TERMINAL:
+                raise ValueError("previous Claude reply is still active")
+            if previous_state != "succeeded" and lock_is_held(exchange / "daemon.lock"):
+                raise ValueError("worker is stopping; retry shortly")
         current = turn_path(exchange, turn)
         if current.exists():
             raise ValueError("turn already exists")
         meta_path = exchange / "meta.json"
         meta = read_json(meta_path)
+        if meta.get("closed_at"):
+            raise ValueError("exchange is closed")
         if args.command == "reply" and args.timeout_seconds is not None:
             meta["timeout_seconds"] = args.timeout_seconds
             write_json(meta_path, meta)
+        worker_pid = ensure_worker(root, exchange, turn, meta, meta_path)
         private_dir(current)
         write_private(current / "message.txt", message)
-        write_private(current / "prompt.txt", prompt)
         status = {
             "state": "queued",
             "created_at": time.time(),
@@ -153,17 +185,17 @@ def launch(root: Path, args: argparse.Namespace) -> dict:
             "timeout_seconds": meta["timeout_seconds"],
         }
         write_status(exchange, turn, status)
-        with (current / "worker.log").open("w", encoding="utf-8") as log:
-            worker = subprocess.Popen(
-                [sys.executable, str(WORKER), str(root), exchange.name, str(turn)],
-                stdin=subprocess.DEVNULL,
-                stdout=log,
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-            )
-        status["worker_pid"] = worker.pid
+        status["worker_pid"] = worker_pid
         write_status(exchange, turn, status)
     return {"exchange_id": exchange.name, "turn": turn, "state": "queued"}
+
+
+def _pid_exists(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
 
 
 def snapshot(root: Path, exchange_id: str, include_result: bool = False) -> dict:
@@ -172,6 +204,7 @@ def snapshot(root: Path, exchange_id: str, include_result: bool = False) -> dict
         turn = latest_turn(exchange)
     status = refreshed_status(exchange, turn)
     result = {"exchange_id": exchange_id, "turn": turn, **status}
+    result["closed"] = bool(read_json(exchange / "meta.json").get("closed_at"))
     if include_result and status["state"] == "succeeded":
         result["response"] = (turn_path(exchange, turn) / "response.txt").read_text(
             encoding="utf-8"
@@ -188,6 +221,34 @@ def cancel(root: Path, exchange_id: str) -> dict:
             status["state"] = "cancel_requested"
             write_status(exchange, turn, status)
             pid = status.get("worker_pid")
+            if isinstance(pid, int) and (
+                lock_is_held(exchange / "daemon.lock")
+                or worker_is_alive(turn_path(exchange, turn))
+            ):
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+    return snapshot(root, exchange_id)
+
+
+def close(root: Path, exchange_id: str) -> dict:
+    exchange = exchange_path(root, exchange_id)
+    with exchange_lock(exchange):
+        meta_path = exchange / "meta.json"
+        meta = read_json(meta_path)
+        if not meta.get("closed_at"):
+            meta["closed_at"] = time.time()
+            write_json(meta_path, meta)
+        turn = latest_turn(exchange)
+        status = read_status(exchange, turn)
+        if status["state"] in ACTIVE:
+            status["state"] = "cancel_requested"
+            write_status(exchange, turn, status)
+        if lock_is_held(exchange / "daemon.lock") or worker_is_alive(
+            turn_path(exchange, turn)
+        ):
+            pid = meta.get("worker_pid", status.get("worker_pid"))
             if isinstance(pid, int):
                 try:
                     os.kill(pid, signal.SIGTERM)
@@ -202,6 +263,8 @@ def dispatch(root: Path, args: argparse.Namespace) -> dict:
         return launch(root, args)
     if args.command == "cancel":
         return cancel(root, args.exchange_id)
+    if args.command == "close":
+        return close(root, args.exchange_id)
     if args.command == "wait":
         if args.timeout_seconds < 0:
             raise ValueError("wait timeout must not be negative")

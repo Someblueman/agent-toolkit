@@ -7,7 +7,7 @@ description: Exchange isolated, asynchronous messages with Claude when the user 
 
 Use the local `tools/claude-bridge/bin/claude-bridge` CLI for a continuing exchange with
 Claude. Codex remains responsible for the work, checks material claims against the actual
-evidence, and decides what to adopt. Claude receives only the messages Codex sends and the
+evidence, and decides what to adopt. Claude receives only the messages Codex sends and
 earlier successful turns in this exchange. It cannot read the workspace or use tools.
 
 Locate the toolkit checkout from this skill's source path. For an installed Codex copy,
@@ -21,26 +21,31 @@ change it. Create that temporary file with mode `0600` and remove it after submi
 the bridge keeps a private copy. Call `start`; retain the returned `exchange_id`. Continue
 useful local work,
 then call `status` or `wait`. `result` returns Claude's answer when ready. Use `reply` with
-the same ID for follow-up questions. One reply may run at a time per exchange.
+the same ID for follow-up questions. One Claude process stays alive across successful
+turns and retains its context in memory. One reply may run at a time per exchange. Call
+`close` when Codex is done with this exchange.
 
 ```sh
 "$TOOLKIT_ROOT/tools/claude-bridge/bin/claude-bridge" start --message-file /path/to/message.txt
 "$TOOLKIT_ROOT/tools/claude-bridge/bin/claude-bridge" wait EXCHANGE_ID --timeout-seconds 30
 "$TOOLKIT_ROOT/tools/claude-bridge/bin/claude-bridge" reply EXCHANGE_ID \
   --message-file /path/to/followup.txt
+"$TOOLKIT_ROOT/tools/claude-bridge/bin/claude-bridge" close EXCHANGE_ID
 ```
 
 The CLI returns JSON. `wait` and `result` exit 0 on success, 3 while pending, and 1 on a
 failed, timed out, or cancelled turn. Inspect the private exchange record before retrying
 a request after an uncertain outcome; the bridge never retries automatically. Stop an
-unneeded run with `cancel EXCHANGE_ID`. The tool preserves state across Codex turns but
+unneeded active turn with `cancel EXCHANGE_ID`; use `close EXCHANGE_ID` to stop Claude
+and end the exchange. After a worker exit, the next reply restarts Claude and replays
+successful turns from the private transcript. The tool preserves state across Codex turns but
 does not wake a completed Codex turn on its own.
 
-The default turn limit is 1800 seconds. For an older exchange with a shorter recorded
-limit, pass `reply EXCHANGE_ID --timeout-seconds 1800` once to update this and later turns.
+New exchanges have no turn time limit. For an older exchange with a recorded limit,
+pass `reply EXCHANGE_ID --timeout-seconds 0` once to remove it for this and later turns.
 
 The default model is `opus` at `high` effort. The bridge invokes Claude with restricted
 and safe modes, no tools, and no Claude session persistence. Its local transcript is the
-only exchange history it intentionally supplies. Read
+only exchange history it intentionally supplies after a restart. Read
 `$TOOLKIT_ROOT/tools/claude-bridge/README.md` for configuration, state location, and exact
 command behavior.

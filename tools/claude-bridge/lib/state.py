@@ -101,7 +101,11 @@ def write_status(exchange: Path, turn: int, status: dict[str, Any]) -> None:
 
 
 def worker_is_alive(turn: Path) -> bool:
-    descriptor = os.open(turn / "worker.lock", os.O_CREAT | os.O_RDWR, 0o600)
+    return lock_is_held(turn / "worker.lock")
+
+
+def lock_is_held(path: Path) -> bool:
+    descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
     try:
         try:
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
