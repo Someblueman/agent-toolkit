@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Asynchronous, isolated Claude replies for local Codex tasks."""
+"""Asynchronous, isolated Claude or Muse replies for local Codex tasks."""
 
 from __future__ import annotations
 
@@ -36,7 +36,10 @@ from state import (
 )
 
 WORKER = Path(__file__).resolve().parents[1] / "lib/worker.py"
-EFFORTS = ("low", "medium", "high", "xhigh", "max")
+MUSE_WORKER = Path(__file__).resolve().parents[1] / "lib/muse_worker.py"
+CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+MUSE_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
+EFFORTS = tuple(dict.fromkeys((*CLAUDE_EFFORTS, *MUSE_EFFORTS)))
 DEFAULT_TURN_TIMEOUT_SECONDS = 0
 
 
@@ -48,8 +51,10 @@ def parser() -> argparse.ArgumentParser:
         "start", help="Start a new exchange and return immediately"
     )
     start.add_argument("--working-directory", default=".")
+    start.add_argument("--peer", choices=("claude", "muse"), default="claude")
     start.add_argument("--claude", default="claude", help="Claude Code executable")
-    start.add_argument("--model", default="opus")
+    start.add_argument("--muse", default="muse", help="Muse executable")
+    start.add_argument("--model")
     start.add_argument("--effort", choices=EFFORTS, default="high")
     start.add_argument(
         "--timeout-seconds", type=float, default=DEFAULT_TURN_TIMEOUT_SECONDS
@@ -89,9 +94,11 @@ def start_exchange(root: Path, args: argparse.Namespace) -> tuple[Path, int]:
         raise ValueError(
             "timeout must not be negative and max output must be at least 1024 bytes"
         )
-    executable = shutil.which(args.claude)
+    if args.peer == "claude" and args.effort not in CLAUDE_EFFORTS:
+        raise ValueError(f"Claude does not support effort {args.effort}")
+    executable = shutil.which(args.claude if args.peer == "claude" else args.muse)
     if executable is None:
-        raise ValueError(f"Claude Code executable not found: {args.claude}")
+        raise ValueError(f"{args.peer} executable not found")
     directory = Path(args.working_directory).expanduser().resolve()
     if not directory.is_dir():
         raise ValueError(f"working directory does not exist: {directory}")
@@ -102,10 +109,11 @@ def start_exchange(root: Path, args: argparse.Namespace) -> tuple[Path, int]:
         {
             "schema_version": 1,
             "id": exchange.name,
+            "peer": args.peer,
             "created_at": time.time(),
             "working_directory": str(directory),
-            "claude": executable,
-            "model": args.model,
+            args.peer: executable,
+            "model": args.model or ("opus" if args.peer == "claude" else None),
             "effort": args.effort,
             "timeout_seconds": args.timeout_seconds,
             "max_output_bytes": args.max_output_bytes,
@@ -140,14 +148,20 @@ def ensure_worker(
     return worker.pid
 
 
+def launch_muse_worker(root: Path, exchange: Path, turn: int) -> int:
+    with (exchange / "worker.log").open("a", encoding="utf-8") as log:
+        worker = subprocess.Popen(
+            [sys.executable, str(MUSE_WORKER), str(root), exchange.name, str(turn)],
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    return worker.pid
+
+
 def launch(root: Path, args: argparse.Namespace) -> dict:
     message = message_text(args)
-    if (
-        args.command == "reply"
-        and args.timeout_seconds is not None
-        and args.timeout_seconds < 0
-    ):
-        raise ValueError("timeout must not be negative")
     if args.command == "start":
         exchange, turn = start_exchange(root, args)
     else:
@@ -175,9 +189,12 @@ def launch(root: Path, args: argparse.Namespace) -> dict:
         if args.command == "reply" and args.timeout_seconds is not None:
             meta["timeout_seconds"] = args.timeout_seconds
             write_json(meta_path, meta)
-        worker_pid = ensure_worker(root, exchange, turn, meta, meta_path)
         private_dir(current)
         write_private(current / "message.txt", message)
+        if meta.get("peer", "claude") == "muse":
+            worker_pid = launch_muse_worker(root, exchange, turn)
+        else:
+            worker_pid = ensure_worker(root, exchange, turn, meta, meta_path)
         status = {
             "state": "queued",
             "created_at": time.time(),
@@ -204,7 +221,9 @@ def snapshot(root: Path, exchange_id: str, include_result: bool = False) -> dict
         turn = latest_turn(exchange)
     status = refreshed_status(exchange, turn)
     result = {"exchange_id": exchange_id, "turn": turn, **status}
-    result["closed"] = bool(read_json(exchange / "meta.json").get("closed_at"))
+    meta = read_json(exchange / "meta.json")
+    result["peer"] = meta.get("peer", "claude")
+    result["closed"] = bool(meta.get("closed_at"))
     if include_result and status["state"] == "succeeded":
         result["response"] = (turn_path(exchange, turn) / "response.txt").read_text(
             encoding="utf-8"
@@ -254,11 +273,22 @@ def close(root: Path, exchange_id: str) -> dict:
                     os.kill(pid, signal.SIGTERM)
                 except ProcessLookupError:
                     pass
+        if meta.get("peer") == "muse":
+            for current in (exchange / "turns").iterdir():
+                auth_link = current / "muse-config/muse/auth.json"
+                if auth_link.is_symlink():
+                    auth_link.unlink(missing_ok=True)
     return snapshot(root, exchange_id)
 
 
 def dispatch(root: Path, args: argparse.Namespace) -> dict:
     if args.command in {"start", "reply"}:
+        if (
+            args.command == "reply"
+            and args.timeout_seconds is not None
+            and args.timeout_seconds < 0
+        ):
+            raise ValueError("timeout must not be negative")
         private_dir(root)
         return launch(root, args)
     if args.command == "cancel":

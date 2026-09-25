@@ -1,32 +1,36 @@
 ---
 name: claude-bridge
-description: Exchange isolated, asynchronous messages with Claude when the user asks Codex and Claude to collaborate.
+description: Exchange isolated, asynchronous messages with Claude or Muse when the user asks Codex to collaborate with either.
 ---
 
-# Claude bridge
+# Claude and Muse bridge
 
 Use the local `tools/claude-bridge/bin/claude-bridge` CLI for a continuing exchange with
-Claude. Codex remains responsible for the work, checks material claims against the actual
-evidence, and decides what to adopt. Claude receives only the messages Codex sends and
-earlier successful turns in this exchange. It cannot read the workspace or use tools.
+Claude or Muse. Codex remains responsible for the work, checks material claims against
+the actual evidence, and decides what to adopt. Each peer receives only the messages
+Codex sends and earlier successful turns in this exchange. The peer has no access to
+the target workspace through the bridge.
 
 Locate the toolkit checkout from this skill's source path. For an installed Codex copy,
 read `agent-toolkit-root.txt` two directories above the skill directory as plain text;
-never source or execute it. Check that the CLI exists and is executable. Claude Code must
-be installed and authenticated. This bridge works in local Codex tasks.
+never source or execute it. Check that the CLI exists and is executable. The selected
+peer CLI must be installed and authenticated. This bridge works in local Codex tasks.
 
-Prepare a concise message containing the question, relevant evidence, and links or file
-excerpts Claude needs. Use `--message-file` for substantial text so shell quoting cannot
+Prepare a concise message containing the question, relevant evidence, and file
+excerpts the peer needs. Use `--message-file` for substantial text so shell quoting cannot
 change it. Create that temporary file with mode `0600` and remove it after submission;
-the bridge keeps a private copy. Call `start`; retain the returned `exchange_id`. Continue
-useful local work,
-then call `status` or `wait`. `result` returns Claude's answer when ready. Use `reply` with
-the same ID for follow-up questions. One Claude process stays alive across successful
-turns and retains its context in memory. One reply may run at a time per exchange. Call
+the bridge keeps a private copy. Call `start`; retain the returned `exchange_id`.
+Continue useful local work, then call `status` or `wait`. `result` returns the peer's
+answer when ready. Use `reply` with the same ID for follow-up questions. Claude stays
+alive across successful turns and retains context in memory. Muse starts one isolated
+headless run per turn and receives the bridge transcript for follow-ups. One reply may
+run at a time per exchange. Call
 `close` when Codex is done with this exchange.
 
 ```sh
 "$TOOLKIT_ROOT/tools/claude-bridge/bin/claude-bridge" start --message-file /path/to/message.txt
+"$TOOLKIT_ROOT/tools/claude-bridge/bin/claude-bridge" start --peer muse \
+  --message-file /path/to/message.txt
 "$TOOLKIT_ROOT/tools/claude-bridge/bin/claude-bridge" wait EXCHANGE_ID --timeout-seconds 30
 "$TOOLKIT_ROOT/tools/claude-bridge/bin/claude-bridge" reply EXCHANGE_ID \
   --message-file /path/to/followup.txt
@@ -36,16 +40,18 @@ turns and retains its context in memory. One reply may run at a time per exchang
 The CLI returns JSON. `wait` and `result` exit 0 on success, 3 while pending, and 1 on a
 failed, timed out, or cancelled turn. Inspect the private exchange record before retrying
 a request after an uncertain outcome; the bridge never retries automatically. Stop an
-unneeded active turn with `cancel EXCHANGE_ID`; use `close EXCHANGE_ID` to stop Claude
-and end the exchange. After a worker exit, the next reply restarts Claude and replays
-successful turns from the private transcript. The tool preserves state across Codex turns but
-does not wake a completed Codex turn on its own.
+unneeded active turn with `cancel EXCHANGE_ID`; use `close EXCHANGE_ID` to end the
+exchange. After a Claude worker exit, the next reply restarts Claude and replays
+successful turns from the private transcript. The tool preserves state across Codex
+turns but does not wake a completed Codex turn on its own.
 
 New exchanges have no turn time limit. For an older exchange with a recorded limit,
 pass `reply EXCHANGE_ID --timeout-seconds 0` once to remove it for this and later turns.
 
-The default model is `opus` at `high` effort. The bridge invokes Claude with restricted
-and safe modes, no tools, and no Claude session persistence. Its local transcript is the
-only exchange history it intentionally supplies after a restart. Read
+Claude defaults to `opus` at `high` effort. Muse uses its native model default at
+`high` effort. The bridge invokes Claude with restricted and safe modes, no tools, and
+no Claude session persistence. Muse runs without personal context or session logs,
+with shell, write, and web tools disabled in a fresh, empty private workspace per turn.
+The bridge transcript is the exchange history supplied to Muse on every turn. Read
 `$TOOLKIT_ROOT/tools/claude-bridge/README.md` for configuration, state location, and exact
 command behavior.
