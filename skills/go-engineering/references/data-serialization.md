@@ -1,26 +1,33 @@
 # Data Serialization, SQL Transactions, and Memory Pooling
 
-Read this for JSON encoding/decoding, wire protocol handling, SQL transaction safety, trust boundary validation, and zero-allocation buffer reuse with `sync.Pool`.
+Read this for JSON encoding and decoding, trust-boundary validation, JSON library choice (including JSON v2), SQL transaction safety, and buffer reuse with `sync.Pool`.
 
 ---
 
 ## 1. JSON Serialization & Trust Boundary Parsing
 
-Go provides powerful reflective JSON serialization via `encoding/json`. In production services, distinguish between internal data transfers and untrusted external payloads.
+`encoding/json` is the default. Distinguish trusted internal data from untrusted external payloads.
 
-### JSON Tag Idioms
+### Struct Tag Idioms
 
-- `json:"field_name"`: Explicit snake_case or camelCase wire name.
-- `json:"field_name,omitempty"`: Omits zero-values (`0`, `""`, `nil`, `false`) from output JSON.
-- `json:"-"`: Completely ignores field in serialization.
-- `json:",string"`: Encodes numbers as strings (useful for 64-bit integers in JavaScript clients).
+- `json:"field_name"`: explicit wire name.
+- `json:"field_name,omitempty"`: omits `false`, `0`, a nil pointer, a nil interface value, and any array, slice, map or string of length zero. It does **not** omit zero-valued structs such as `time.Time{}`.
+- `json:"field_name,omitzero"` (Go 1.24+): omits the field when it is the zero value of its type, or when its `IsZero() bool` method returns true. Use it for structs and `time.Time`.
+- `json:"-"`: never encoded or decoded.
+- `json:",string"`: encodes a string, float, integer or boolean field as a JSON string (useful for 64-bit IDs read by JavaScript clients).
+
+### Decoding Behavior to Know
+
+- `Unmarshal` and `Decoder` match object keys to fields **case-insensitively** in the v1 API, and ignore unknown keys unless `DisallowUnknownFields` is set.
+- On Go 1.27, `encoding/json` runs on the v2 implementation with v1 behavior preserved, but error message text may differ: branch on error types, never on messages. `GOEXPERIMENT=nojsonv2` restores the old implementation if a compatibility problem appears.
+- `encoding/json/v2` (Go 1.27; `GOEXPERIMENT=jsonv2` on 1.25-1.26) has stricter defaults, such as case-sensitive matching and rejecting duplicate names and invalid UTF-8. Adopt it deliberately, not as a drop-in rename. Its API changed during the experiment (for example the `inline` tag option became `embed`), so code written against the 1.25-1.26 experiment may need updating.
 
 ### Trust Boundary Decoding
 
 When decoding untrusted HTTP request bodies:
-1. Limit payload size with `http.MaxBytesReader(w, r.Body, maxBytes)` to prevent memory exhaustion DoS attacks.
-2. Use `json.NewDecoder(r.Body)` with `dec.DisallowUnknownFields()` to catch unknown or mistyped fields.
-3. Handle single-object streams strictly.
+1. Limit the body size with `http.MaxBytesReader` and map the resulting `*http.MaxBytesError` to 413.
+2. Decide whether the API rejects unknown fields. `DisallowUnknownFields` catches typos, but it also rejects clients that send fields from a newer API version.
+3. Require exactly one JSON value.
 
 ```go
 package httpio
@@ -33,56 +40,63 @@ import (
     "net/http"
 )
 
-func DecodeJSONBody(w http.ResponseWriter, r *http.Request, dst any, maxBytes int64) error {
+// DecodeJSONBody decodes a single JSON value from r into dst. The returned
+// status is the HTTP status to send when err is non-nil.
+func DecodeJSONBody(w http.ResponseWriter, r *http.Request, dst any, maxBytes int64) (status int, err error) {
     r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 
     dec := json.NewDecoder(r.Body)
-    dec.DisallowUnknownFields() // Reject unexpected fields at trust boundary
+    dec.DisallowUnknownFields() // only if the API contract rejects unknown fields
 
     if err := dec.Decode(dst); err != nil {
         var syntaxErr *json.SyntaxError
-        var unmarshalTypeErr *json.UnmarshalTypeError
+        var typeErr *json.UnmarshalTypeError
+        var tooLarge *http.MaxBytesError
         switch {
+        case errors.As(err, &tooLarge):
+            return http.StatusRequestEntityTooLarge, fmt.Errorf("body exceeds %d bytes", tooLarge.Limit)
         case errors.As(err, &syntaxErr):
-            return fmt.Errorf("body contains malformed JSON at position %d: %w", syntaxErr.Offset, err)
-        case errors.As(err, &unmarshalTypeErr):
-            return fmt.Errorf("body contains incorrect type for field %q: %w", unmarshalTypeErr.Field, err)
+            return http.StatusBadRequest, fmt.Errorf("malformed JSON at offset %d", syntaxErr.Offset)
+        case errors.Is(err, io.ErrUnexpectedEOF):
+            return http.StatusBadRequest, errors.New("malformed JSON: unexpected end of body")
+        case errors.As(err, &typeErr):
+            return http.StatusBadRequest, fmt.Errorf("wrong type for field %q", typeErr.Field)
         case errors.Is(err, io.EOF):
-            return errors.New("body must not be empty")
+            return http.StatusBadRequest, errors.New("body must not be empty")
         default:
-            return err
+            return http.StatusBadRequest, fmt.Errorf("decoding body: %w", err)
         }
     }
 
-    // Ensure there is only a single JSON object in the stream
-    if err := dec.Decode(&struct{}{}); err != io.EOF {
-        return errors.New("body must only contain a single JSON value")
+    if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+        return http.StatusBadRequest, errors.New("body must contain a single JSON value")
     }
-
-    return nil
+    return http.StatusOK, nil
 }
 ```
 
+The messages are built from the error's fields so they stay stable when the JSON implementation's own wording changes.
+
 ---
 
-## 2. Serialization Library Selection Matrix
+## 2. Serialization Library Selection
 
-| Engine | Throughput / Allocations | When to Choose | Trade-offs |
-|---|---|---|---|
-| **`encoding/json` (Stdlib)** | Moderate speed; reflection allocations | Default choice for all standard APIs, config files, and low-to-medium traffic. | Slower on large JSON payloads (> 100 KB). |
-| **`segmentio/encoding/json`** | 2-4x faster than stdlib | Drop-in standard replacement for high-throughput REST APIs. | Additional dependency. |
-| **`bytedance/sonic`** | 5-10x faster (JIT/AVX) | Extreme throughput microservices on x86-64 / ARM64 Linux/macOS. | Unsafe memory manipulation; arch-specific JIT. |
-| **Protobuf / gRPC** | Ultra-high throughput; binary compact | Internal service-to-service RPCs, real-time event streams. | Requires `.proto` schema definitions and code generation. |
+| Engine | When to Choose | Trade-offs |
+|---|---|---|
+| **`encoding/json`** | Default for APIs, config and almost all services. | Reflection-based. On Go 1.27 it uses the v2 implementation, which the release notes describe as unmarshaling significantly faster. |
+| **`encoding/json/v2` + `jsontext`** | New code wanting stricter semantics, options, or streaming token-level access. | Go 1.27 (experiment on 1.25-1.26); different defaults from v1. |
+| **Third-party JSON (`segmentio/encoding`, `bytedance/sonic`)** | Only after a profile shows JSON dominates CPU, and a benchmark on your own payloads shows a worthwhile gain over the current stdlib. | Extra dependency; differences in error messages and edge-case behavior; `sonic` relies on JIT/assembly with platform and Go-version support limits and falls back to `encoding/json` elsewhere. Published speedups were measured against older stdlib versions. |
+| **Protocol Buffers / gRPC** | Service-to-service RPC and compact binary events with a schema. | Requires `.proto` definitions and code generation. |
 
 ---
 
 ## 3. SQL Database & Transaction Safety
 
-Database interactions must maintain strict safety invariants: parameterized queries, explicit context timeouts, and guaranteed transaction rollback on failure.
+Use parameterized queries, pass a context, and guarantee rollback on every failure path.
 
-### The Canonical SQL Transaction Pattern
+### The Canonical Transaction Pattern
 
-The idiomatic Go transaction pattern uses `defer tx.Rollback()`. If `tx.Commit()` succeeds, `tx.Rollback()` returns `sql.ErrTxDone` and performs a safe no-op.
+Call `defer tx.Rollback()` right after `BeginTx`. After a successful `Commit`, `Rollback` returns `sql.ErrTxDone` and does nothing. `errcheck` reports the unchecked deferred call; write `defer func() { _ = tx.Rollback() }()` or keep the bare form if the repository's lint config excludes it. If the context passed to `BeginTx` is canceled, `database/sql` rolls the transaction back and `Commit` returns an error.
 
 ```go
 package store
@@ -90,49 +104,76 @@ package store
 import (
     "context"
     "database/sql"
+    "errors"
     "fmt"
+)
+
+var (
+    ErrInsufficientFunds = errors.New("insufficient funds")
+    ErrAccountNotFound   = errors.New("account not found")
 )
 
 type Store struct {
     db *sql.DB
 }
 
+// TransferFunds moves amount (> 0) between two accounts atomically.
 func (s *Store) TransferFunds(ctx context.Context, fromID, toID string, amount int64) error {
-    tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+    tx, err := s.db.BeginTx(ctx, nil)
     if err != nil {
-        return fmt.Errorf("starting tx: %w", err)
+        return fmt.Errorf("starting transfer: %w", err)
     }
-    // Safe deferred rollback: harmless if tx.Commit() is executed below
-    defer tx.Rollback()
+    defer tx.Rollback() // no-op after a successful Commit
 
-    // Step 1: Debit sender
-    _, err = tx.ExecContext(ctx, "UPDATE accounts SET balance = balance - $1 WHERE id = $2", amount, fromID)
+    // The balance guard makes the debit fail instead of overdrawing.
+    res, err := tx.ExecContext(ctx,
+        "UPDATE accounts SET balance = balance - $1 WHERE id = $2 AND balance >= $1", amount, fromID)
     if err != nil {
         return fmt.Errorf("debiting %s: %w", fromID, err)
     }
+    if err := expectOneRow(res, ErrInsufficientFunds); err != nil {
+        return fmt.Errorf("debiting %s: %w", fromID, err)
+    }
 
-    // Step 2: Credit receiver
-    _, err = tx.ExecContext(ctx, "UPDATE accounts SET balance = balance + $1 WHERE id = $2", amount, toID)
+    res, err = tx.ExecContext(ctx,
+        "UPDATE accounts SET balance = balance + $1 WHERE id = $2", amount, toID)
     if err != nil {
         return fmt.Errorf("crediting %s: %w", toID, err)
     }
-
-    // Step 3: Commit transaction
-    if err := tx.Commit(); err != nil {
-        return fmt.Errorf("committing tx: %w", err)
+    if err := expectOneRow(res, ErrAccountNotFound); err != nil {
+        return fmt.Errorf("crediting %s: %w", toID, err)
     }
 
+    if err := tx.Commit(); err != nil {
+        return fmt.Errorf("committing transfer: %w", err)
+    }
+    return nil
+}
+
+// expectOneRow returns errNoMatch unless the statement affected exactly one row.
+func expectOneRow(res sql.Result, errNoMatch error) error {
+    n, err := res.RowsAffected()
+    if err != nil {
+        return err
+    }
+    if n != 1 {
+        return errNoMatch
+    }
     return nil
 }
 ```
 
+Two transfers in opposite directions lock the same rows in opposite orders and can deadlock. Either update rows in a consistent order (for example by account ID) or treat the database's deadlock and serialization-failure errors as retryable. Isolation levels in `sql.TxOptions` are driver-specific; pass `nil` unless the code needs a particular level and the driver supports it.
+
+### Query Parameters and Identifiers
+
+Placeholders (`$1` for PostgreSQL, `?` for MySQL and SQLite) bind values only. Table names, column names and `ORDER BY` directions cannot be parameterized; select them from a fixed allowlist rather than formatting user input into the query.
+
 ---
 
-## 4. Zero-Allocation Buffer Pooling with `sync.Pool`
+## 4. Buffer Reuse with `sync.Pool`
 
-In high-throughput systems, constantly allocating and discarding byte slices or `bytes.Buffer` instances causes severe Garbage Collector pressure. Use `sync.Pool` to recycle memory buffers safely.
-
-### Safe Buffer Pool Implementation
+In hot paths that allocate and discard many short-lived buffers, `sync.Pool` can reduce garbage collector pressure. Use it only after a profile shows the allocations matter. The pool may drop its contents at any garbage collection, so it is a cache, not a free list.
 
 ```go
 package bufferpool
@@ -142,96 +183,57 @@ import (
     "sync"
 )
 
-const maxBufferSize = 64 * 1024 // 64 KB cap to prevent permanent memory retention
+const maxBufferCap = 64 << 10 // don't keep buffers that grew past 64 KiB
 
 var pool = sync.Pool{
-    New: func() any {
-        // Pre-allocate initial buffer capacity
-        return bytes.NewBuffer(make([]byte, 0, 4096))
-    },
+    New: func() any { return new(bytes.Buffer) },
 }
 
-// Get retrieves a clean, reset buffer from the pool.
+// Get returns an empty buffer.
 func Get() *bytes.Buffer {
     buf := pool.Get().(*bytes.Buffer)
     buf.Reset()
     return buf
 }
 
-// Put returns the buffer to the pool unless it has grown excessively large.
+// Put returns buf to the pool. The caller must not use buf, or any slice
+// obtained from buf.Bytes(), after calling Put.
 func Put(buf *bytes.Buffer) {
-    if buf.Cap() > maxBufferSize {
-        // Drop oversized buffer to let GC reclaim memory
-        return
+    if buf.Cap() > maxBufferCap {
+        return // let the GC reclaim oversized buffers
     }
     pool.Put(buf)
 }
 ```
 
+Store pointers (`*bytes.Buffer`, `*[]byte`), not slices or structs by value, so `Put` doesn't allocate (staticcheck SA6002).
+
 ---
 
-## 5. Anti-Patterns vs Pragmatic Data Serialization
+## 5. Anti-Patterns vs Pragmatic Data Handling
 
 | Anti-Pattern | Failure Mode | Pragmatic Solution |
 |---|---|---|
-| **SQL String Concatenation** | `fmt.Sprintf("SELECT * FROM u WHERE id = '%s'", id)` allows SQL injection. | Always use parameterized queries: `$1` (Postgres) or `?` (MySQL/SQLite). |
-| **Missing `defer tx.Rollback()`** | Early return on error leaves database locks open and connection leaks. | Always invoke `defer tx.Rollback()` immediately after `db.BeginTx`. |
-| **Storing Large Buffers in `sync.Pool`** | An anomalous 100 MB buffer stays in pool indefinitely, causing out-of-memory. | Cap maximum buffer capacity before returning to pool (`buf.Cap() > limit`). |
-| **Unbounded JSON Body Reading** | `io.ReadAll(r.Body)` allows attackers to send 10 GB stream, exhausting RAM. | Wrap with `http.MaxBytesReader(w, r.Body, maxLimit)`. |
-| **Zombie Decoders & Dual Schemas** | Keeping fallback fields (`if d.LegacyID != ""`) complicates domain structs. | Refactor domain structs in-place; keep migrations explicit at boundary. |
+| **Formatting values into SQL** | `fmt.Sprintf("... WHERE id = '%s'", id)` allows SQL injection. | Placeholders for values; allowlists for identifiers. |
+| **Manual rollback per error branch** | One forgotten branch leaves the transaction and its locks open until the context ends. | `defer tx.Rollback()` immediately after `BeginTx`. |
+| **Ignoring `RowsAffected`** | An update that matched nothing (missing row, failed guard) looks like success. | Check the count when the statement must change a specific row. |
+| **Pooling unbounded buffers** | One huge request leaves a huge buffer in the pool. | Drop buffers above a capacity limit before `Put`. |
+| **Reading unbounded bodies** | `io.ReadAll(r.Body)` lets a client exhaust memory. | `http.MaxBytesReader` with a limit. |
+| **`omitempty` on struct or `time.Time` fields** | The zero value is still encoded. | `omitzero` (Go 1.24+) or a pointer field. |
+| **Branching on JSON error text** | Messages differ between implementations (and changed in Go 1.27). | Branch on `*json.SyntaxError`, `*json.UnmarshalTypeError` and friends. |
+| **Zombie decoders & dual schemas** | Fallback fields (`if d.LegacyID != ""`) complicate domain types forever. | Change structs in place; keep explicit migrations at the boundary. |
 
 ---
 
-## 6. Concrete Code Comparisons
-
-### Database Transaction Management
-
-#### ❌ ANTI-PATTERN: Manual Rollback in Every Error Branch
-```go
-// BAD: Prone to missed rollbacks on panics or unexpected returns
-tx, err := db.Begin()
-if err != nil { return err }
-
-if err := step1(tx); err != nil {
-    tx.Rollback()
-    return err
-}
-
-if err := step2(tx); err != nil {
-    // BUG: Developer forgot to call tx.Rollback() here!
-    return err
-}
-
-return tx.Commit()
-```
-
-#### ✅ PRAGMATIC: Guaranteed Deferred Rollback
-```go
-// GOOD: Safe, clean, and panic-resilient
-tx, err := db.BeginTx(ctx, nil)
-if err != nil {
-    return fmt.Errorf("begin tx: %w", err)
-}
-defer tx.Rollback() // Safe no-op once Commit() succeeds
-
-if err := step1(ctx, tx); err != nil {
-    return fmt.Errorf("step 1: %w", err)
-}
-if err := step2(ctx, tx); err != nil {
-    return fmt.Errorf("step 2: %w", err)
-}
-
-return tx.Commit()
-```
-
----
-
-## 7. Fast-Path Data Verification Recipes
+## 6. Data Verification Recipes
 
 ```bash
-# Run database transaction unit tests against test DB
-go test -v -run ^TestTransferFunds$ ./internal/store
+# Run the transaction tests against the test database
+go test -run '^TestTransferFunds$' ./internal/store
 
-# Benchmark JSON serialization throughput and allocations
-go test -bench=BenchmarkJSON -benchmem ./internal/httpio
+# Benchmark serialization throughput and allocations (skip unit tests with -run '^$')
+go test -run '^$' -bench '^BenchmarkJSON' -benchmem ./internal/httpio
+
+# Fuzz a decoder that parses untrusted input
+go test -run '^$' -fuzz '^FuzzDecode$' -fuzztime 30s ./internal/httpio
 ```

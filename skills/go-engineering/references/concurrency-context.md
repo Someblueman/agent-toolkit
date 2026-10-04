@@ -1,68 +1,73 @@
 # Concurrency, Context, and Goroutine Lifecycles
 
-Read this for goroutine lifecycle guarantees, leak prevention, context propagation and cancellation, channel versus mutex selection, worker pools, bounded concurrency, and `errgroup`.
+Read this for goroutine lifecycle guarantees, leak prevention and detection, context propagation and cancellation, channel versus mutex selection, worker pools, bounded concurrency, `errgroup`, and testing concurrent code with `testing/synctest`.
 
 ---
 
 ## 1. Goroutine Lifecycle & Leak Prevention
 
-A goroutine is cheap (~2 KB initial stack), but an abandoned goroutine leaks memory, open file descriptors, mutex locks, and network sockets permanently for the life of the process.
+A goroutine starts with a small stack and is cheap to create, but a goroutine that never exits keeps its stack and everything it references alive, along with any file descriptors, sockets or locks it holds, for the life of the process.
 
 ### The Invariant of Goroutine Ownership
 
-> **Every goroutine must have a deterministic creator, a known supervisor, and a guaranteed termination condition.**
+> **Make it clear when, or whether, every goroutine exits.** Each goroutine has an owner that starts it, can stop it, and waits for it.
 
 ### Common Leak Vectors & Prevention Rules
 
-1. **Unbuffered Channel Send Without Receiver**: A goroutine sends to an unbuffered channel when the receiver has already exited or timed out.
-   - *Fix*: Use a buffered channel of capacity 1 for single-result worker goroutines, or select on `<-ctx.Done()`.
-2. **Unread Channel Receive on Forgotten Channel**: A worker goroutine waits forever for incoming work on a channel that is never closed.
-   - *Fix*: Always close input channels from the producer side, or listen on `<-ctx.Done()`.
-3. **Blocking Network / I/O Without Context / Deadlines**: Goroutines executing HTTP requests, database queries, or socket reads that lack timeouts will hang indefinitely on network partition.
-   - *Fix*: Always use `http.NewRequestWithContext`, `db.QueryContext`, or set read/write socket deadlines.
+1. **Send with no receiver**: A goroutine sends on an unbuffered channel after the receiver has returned (for example on timeout).
+   - *Fix*: Give single-result channels a buffer of 1, or select on `<-ctx.Done()` alongside the send.
+2. **Receive on a channel nobody closes**: A worker ranges over an input channel the producer never closes.
+   - *Fix*: The producer closes the channel when done; workers also select on `<-ctx.Done()`.
+3. **Blocking I/O without cancellation**: Requests, queries or socket reads without a context or deadline hang indefinitely on a network partition.
+   - *Fix*: Use context-aware APIs (`http.NewRequestWithContext`, `db.QueryContext`) or deadlines (`net.Conn.SetDeadline`). A plain `select` on `ctx.Done()` cannot interrupt a blocked read.
+
+### Detecting Leaks
+
+- **Tests**: Run time- and goroutine-dependent tests inside `synctest.Test` (Go 1.25+, section 6). It waits for every goroutine started in the bubble to exit and fails the test if they deadlock. Outside a bubble, `go.uber.org/goleak` checks for unexpected goroutines at test end.
+- **Running programs**: The `goroutineleak` profile (Go 1.27; experimental in 1.26 behind `GOEXPERIMENT=goroutineleakprofile`) reports goroutines blocked forever on unreachable concurrency primitives, and is served at `/debug/pprof/goroutineleak`. Before 1.27, compare goroutine counts and stacks over time with `/debug/pprof/goroutine?debug=2`.
 
 ---
 
 ## 2. Context Propagation & Cancellation
 
-`context.Context` is the standard Go mechanism for carrying deadlines, cancellation signals, and trace data across API and goroutine boundaries.
+`context.Context` carries deadlines, cancellation signals and request-scoped values across API and goroutine boundaries.
 
 ### Context Rules of Engagement
 
-1. **Always the First Parameter**: Name it `ctx context.Context` and place it as the very first parameter:
+1. **First parameter**: Name it `ctx` and put it first:
    ```go
    func FetchUser(ctx context.Context, id string) (*User, error)
    ```
-2. **Never Store in a Struct**: Storing context inside a struct creates ambiguous lifecycles, race conditions, and disconnects method execution from caller lifecycles. (The only standard exception is `http.Request`).
-3. **Always Invoke `defer cancel()`**: When deriving a context with `context.WithTimeout`, `context.WithDeadline`, or `context.WithCancel`, call the cancel function via `defer` immediately to release timer resources:
+2. **Don't store it in a struct**: A stored context obscures which call its deadline and cancellation apply to and stops callers from setting them per call. Pass it to each method instead. The Go blog's one sanctioned exception is keeping an existing API backward compatible, as `http.Request` does (<https://go.dev/blog/context-and-structs>).
+3. **`defer cancel()` immediately**: After `context.WithCancel`, `WithTimeout` or `WithDeadline`, defer the cancel function at once; forgetting it leaks the child context until the parent is canceled. `go vet`'s `lostcancel` check catches many misses.
    ```go
    ctx, cancel := context.WithTimeout(parentCtx, 5*time.Second)
    defer cancel()
    ```
-4. **Use `context.WithCancelCause` (Go 1.20+)**: When canceling due to a specific domain or network error, use `WithCancelCause` to preserve the causal error for inspection via `context.Cause(ctx)`.
-5. **Never Pass `nil` Context**: Use `context.Background()` for root entrypoints and `context.TODO()` when context plumbing is temporarily underway.
+4. **Record why**: `context.WithCancelCause` (1.20) and `WithTimeoutCause`/`WithDeadlineCause` (1.21) attach an error retrievable with `context.Cause(ctx)`.
+5. **Other helpers (1.21+)**: `context.WithoutCancel` keeps values but detaches cancellation (for work that must outlive the request, such as an audit write); `context.AfterFunc` runs a function when a context is done. `signal.NotifyContext` turns SIGINT/SIGTERM into cancellation for a command's root context.
+6. **Never pass `nil`**: Use `context.Background()` at the root (`main`, tests on Go < 1.24) and `context.TODO()` while plumbing is incomplete. In tests on Go 1.24+, use `t.Context()`.
 
 ---
 
 ## 3. Channels vs. Mutexes vs. Atomics
 
-Choosing the right synchronization primitive is critical for simplicity and performance.
-
 ### Concurrency Primitives Decision Matrix
 
-| Primitive | Primary Use Case | When to Choose | When to Avoid |
+| Primitive | Primary Use Case | When to Choose | Cautions |
 |---|---|---|---|
-| **`sync.Mutex`** | State Protection | Guarding in-memory data structures, caches, counters, and internal struct invariants. | Long-running I/O or network calls while holding lock. |
-| **`sync.RWMutex`** | Read-Heavy Invariants | Read-to-write ratio > 10:1 with fast read operations. | Write-heavy paths or very short reads where RWMutex overhead exceeds Mutex. |
-| **`sync/atomic`** | Lock-Free State / Flags | Single primitive integers (e.g. `atomic.Int64`), booleans (`atomic.Bool`), or pointer swaps (`atomic.Pointer`). | Multi-field invariants requiring atomic coordination. |
-| **Channels** | Ownership Transfer & Signaling | Transferring data ownership between goroutines, streaming pipelines, task queues, and stop/cancellation signals. | Simple shared in-memory state or cache protection. |
-| **`errgroup.Group`** | Structured Concurrent Tasks | Running parallel subtasks where errors must be collected and cancellation propagated. | Long-lived background daemon loops. |
+| **`sync.Mutex`** | Protecting shared state | Caches, maps, counters, multi-field invariants. | Don't hold it across I/O or other blocking calls. Don't copy a struct containing one (`go vet` `copylocks`). |
+| **`sync.RWMutex`** | Read-mostly state | Reads dominate and profiling shows contention on a plain `Mutex`. | Costs more than `Mutex` per operation. A waiting `Lock` blocks new `RLock` calls, so never read-lock recursively. |
+| **`sync/atomic` types** | Single independent values | Counters, flags, pointer swaps (`atomic.Int64`, `atomic.Bool`, `atomic.Pointer[T]`). | Invariants spanning several fields need a mutex. Contended atomics still contend on the cache line. |
+| **Channels** | Ownership transfer & signaling | Handing data between goroutines, pipelines, work queues, done signals. | Overkill for protecting a shared map; decide who closes each channel. |
+| **`sync.WaitGroup`** | Waiting for goroutines that don't return errors | Fan-out where each goroutine handles its own failures. Go 1.25+: `wg.Go(f)`. | Call `Add` before starting the goroutine (`wg.Go` does this for you). |
+| **`errgroup.Group`** | Concurrent subtasks with errors | Parallel work where the first error should cancel the rest. | The context from `errgroup.WithContext` is canceled when `Wait` returns; don't use it afterwards. |
 
 ---
 
 ## 4. Structured Concurrency with `errgroup`
 
-The `golang.org/x/sync/errgroup` package provides idiomatic structured concurrency: it coordinates parallel tasks, collects errors, bounds concurrency, and propagates context cancellation.
+`golang.org/x/sync/errgroup` runs subtasks, returns the first error, bounds concurrency with `SetLimit`, and cancels its derived context on the first error.
 
 ```go
 package worker
@@ -70,21 +75,20 @@ package worker
 import (
     "context"
     "fmt"
+
     "golang.org/x/sync/errgroup"
 )
 
 func ProcessItems(ctx context.Context, items []string, maxConcurrency int) error {
     g, ctx := errgroup.WithContext(ctx)
     if maxConcurrency > 0 {
-        g.SetLimit(maxConcurrency) // Bounded concurrency limit
+        g.SetLimit(maxConcurrency) // Go blocks until a slot is free
     }
 
-    for _, item := range items {
-        item := item // Safe loop capture
+    for _, item := range items { // per-iteration item since go 1.22; no copy needed
         g.Go(func() error {
-            // Check context before heavy work
             if err := ctx.Err(); err != nil {
-                return err
+                return err // another task failed; skip remaining work
             }
             if err := process(ctx, item); err != nil {
                 return fmt.Errorf("processing item %s: %w", item, err)
@@ -100,17 +104,28 @@ func ProcessItems(ctx context.Context, items []string, maxConcurrency int) error
 }
 ```
 
+For goroutines that don't return errors, Go 1.25's `sync.WaitGroup.Go` removes the `Add`/`Done` bookkeeping:
+
+```go
+var wg sync.WaitGroup
+for _, s := range shards {
+    wg.Go(func() { s.Flush() })
+}
+wg.Wait()
+```
+
 ---
 
 ## 5. Anti-Patterns vs Pragmatic Concurrency
 
 | Anti-Pattern | Failure Mode | Pragmatic Solution |
 |---|---|---|
-| **Fire-and-Forget Goroutines** | `go func() { ... }()` without error handling or lifetime tracking leads to leaked resources and silent crashes. | Manage lifecycles via `sync.WaitGroup`, `errgroup.Group`, or worker pools. |
-| **Holding Mutex Across I/O** | `mu.Lock()` held during HTTP call or database query serializes throughput and causes connection pool exhaustion. | Perform I/O outside critical sections; lock only during state updates. |
-| **Channel Leak on Early Return** | Worker writes to unbuffered channel; caller returns early on timeout; worker goroutine blocks forever. | Use buffered channel with capacity 1 (`make(chan Result, 1)`) for single-result tasks. |
-| **Context in Struct Field** | `type Service struct { ctx context.Context }` causes stale deadlines and cross-goroutine race conditions. | Pass `ctx` as the first argument to every method. |
-| **Unbounded Goroutine Spawning** | Spawning a goroutine per incoming item (`for _, item := range 1M { go handle(item) }`) exhausts OS memory/FDs. | Use `errgroup.SetLimit(N)` or a fixed worker pool. |
+| **Fire-and-forget goroutines** | `go func() { ... }()` with no owner: errors vanish, shutdown can't wait for it, leaks go unnoticed. | Own it with `errgroup`, `sync.WaitGroup`, or a worker pool with a stop signal. |
+| **Holding a mutex across I/O** | Serializes throughput and stalls every other user of the lock behind the slowest request. | Copy what you need under the lock, release it, then do the I/O. |
+| **Channel leak on early return** | The worker blocks forever sending a result nobody will receive. | Buffer single-result channels (`make(chan Result, 1)`) or select on `ctx.Done()`. |
+| **Context in a struct field** | Deadlines and cancellation no longer belong to a specific call. | Pass `ctx` as the first argument to each method. |
+| **Unbounded goroutine spawning** | One goroutine per item for a million items exhausts memory or file descriptors. | `errgroup.SetLimit(n)` or a fixed worker pool. |
+| **`time.Sleep` in tests to "let goroutines run"** | Slow and flaky. | `synctest.Test` with `synctest.Wait`, or explicit synchronization. |
 
 ---
 
@@ -120,14 +135,12 @@ func ProcessItems(ctx context.Context, items []string, maxConcurrency int) error
 
 #### ❌ ANTI-PATTERN: Leaked Goroutine on Caller Timeout
 ```go
-// BAD: If parentCtx times out before slowQuery finishes,
-// the spawned goroutine blocks forever trying to send to ch.
+// BAD: if ctx is done before slowQuery returns, the goroutine blocks forever on the send.
 func QueryAsync(ctx context.Context, query string) (*Result, error) {
-    ch := make(chan *Result) // Unbuffered!
+    ch := make(chan *Result) // unbuffered
 
     go func() {
-        res := slowQuery(query)
-        ch <- res // Leaks goroutine if caller timed out and left select!
+        ch <- slowQuery(query) // nobody receives after the caller returns
     }()
 
     select {
@@ -139,17 +152,15 @@ func QueryAsync(ctx context.Context, query string) (*Result, error) {
 }
 ```
 
-#### ✅ PRAGMATIC: Buffered Channel + Context-Aware Exit
+#### ✅ PRAGMATIC: Buffered Channel + Context-Aware Work
 ```go
-// GOOD: Buffered channel allows goroutine to send and exit without blocking,
-// even if caller abandons the receive due to context cancellation.
+// GOOD: the buffer lets the goroutine finish its send and exit even if the caller left.
+// Passing ctx lets slowQuery stop early instead of running to completion unobserved.
 func QueryAsync(ctx context.Context, query string) (*Result, error) {
-    ch := make(chan *Result, 1) // Buffer size 1 guarantees send will not block
+    ch := make(chan *Result, 1)
 
     go func() {
-        // Alternatively, pass context into query if supported
-        res := slowQuery(query)
-        ch <- res
+        ch <- slowQuery(ctx, query)
     }()
 
     select {
@@ -163,52 +174,71 @@ func QueryAsync(ctx context.Context, query string) (*Result, error) {
 
 ---
 
-### Protecting Shared State: Mutex vs Atomic
+### Shared Counter: Mutex or Atomic
 
-#### ❌ ANTI-PATTERN: Heavy Mutex on Simple Counter
+Both are correct. For a single independent counter, the atomic type is simpler and avoids a lock; switch to a mutex once the counter must change together with other fields.
+
 ```go
-// BAD: Mutex contention overhead on high-frequency increment
-type MetricTracker struct {
-    mu    sync.Mutex
-    count int64
+// Mutex: correct, and the right choice when several fields change together.
+type Stats struct {
+    mu       sync.Mutex
+    requests int64
+    bytes    int64
 }
 
-func (m *MetricTracker) Inc() {
-    m.mu.Lock()
-    m.count++
-    m.mu.Unlock()
+func (s *Stats) Record(n int64) {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+    s.requests++
+    s.bytes += n
 }
+
+// Atomic: simpler for one independent value.
+type Counter struct {
+    n atomic.Int64
+}
+
+func (c *Counter) Inc()         { c.n.Add(1) }
+func (c *Counter) Value() int64 { return c.n.Load() }
 ```
 
-#### ✅ PRAGMATIC: Fast Lock-Free Atomic Primitive
+---
+
+### Testing Time-Dependent Code with `testing/synctest` (Go 1.25+)
+
+Inside `synctest.Test`, goroutines run in a bubble with a fake clock. Time advances only when every goroutine in the bubble is durably blocked, so `time.Sleep(time.Minute)` returns instantly and deterministically. Durably blocking operations are: sends and receives on channels created inside the bubble, a `select` whose cases all use such channels, `sync.Cond.Wait`, `sync.WaitGroup.Wait` when `Add` was called inside the bubble, and `time.Sleep`. Channels and WaitGroups created outside the bubble, `sync.Mutex`/`RWMutex` locking, I/O and syscalls are not; create concurrency primitives inside the bubble and use in-memory fakes for I/O (on Go 1.27, `httptest.NewTestServer` provides an in-memory network for HTTP).
+
 ```go
-// GOOD: Native hardware atomic instruction, zero contention lock overhead
-import "sync/atomic"
+func TestCacheExpiry(t *testing.T) {
+    synctest.Test(t, func(t *testing.T) {
+        c := NewCache(time.Minute) // starts a background expiry goroutine
+        defer c.Close()
+        c.Put("k", "v")
 
-type MetricTracker struct {
-    count atomic.Int64
-}
+        time.Sleep(time.Minute + time.Second) // fake clock: returns immediately
+        synctest.Wait()                       // let the expiry goroutine finish its work
 
-func (m *MetricTracker) Inc() {
-    m.count.Add(1)
-}
-
-func (m *MetricTracker) Value() int64 {
-    return m.count.Load()
+        if _, ok := c.Get("k"); ok {
+            t.Fatal("entry did not expire")
+        }
+    })
 }
 ```
 
 ---
 
-## 7. Fast-Path Concurrency Verification Recipes
+## 7. Concurrency Verification Recipes
 
 ```bash
-# Run tests with the Go race detector enabled on targeted package
-go test -race -v -run ^TestConcurrency ./internal/worker
+# Targeted test with the race detector
+go test -race -run '^TestConcurrency' ./internal/worker
 
-# Stress-test a concurrent test for race conditions (100 iterations)
-go test -race -count=100 -run ^TestWorkerPoolRace$ ./internal/worker
+# Stress a racy test (bypasses the cache because -count > 1)
+go test -race -count=100 -run '^TestWorkerPoolRace$' ./internal/worker
 
-# Detect deadlocks or goroutine leaks during test execution
-go test -timeout 10s -run ^TestDeadlockScenario$ ./internal/worker
+# Fail fast with a full goroutine dump if a test hangs (does not detect leaks by itself)
+go test -timeout 30s -run '^TestDeadlockScenario$' ./internal/worker
+
+# Vet checks relevant to concurrency (copylocks, lostcancel, waitgroup/waitgroupgo) run by default
+go vet ./internal/worker
 ```

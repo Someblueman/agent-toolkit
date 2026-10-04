@@ -1,125 +1,158 @@
 # Tooling, CI, Fast-Path Testing, and Linting
 
-Read this for fast-path `go test` filtering, race detector configuration, `golangci-lint` setup, `go.mod` hygiene, and build tags for integration test isolation.
+Read this for fast-path `go test` targeting and caching, the race detector, `golangci-lint` v2 configuration, module hygiene, tool dependencies, vulnerability scanning, and build tags for integration tests.
 
 ---
 
-## 1. Fast-Path Test Filtering Recipes
+## 1. Fast-Path Test Targeting
 
-Avoid running whole-repository test suites during localized edits. Use precise test targeting to keep feedback relevant and quick.
+Avoid running whole-repository test suites during localized edits. Target the affected package and tests. Quote `-run` patterns so the shell doesn't expand them.
 
 ### Targeting Matrix
 
-| Goal | Command Recipe |
+| Goal | Command |
 |---|---|
-| **Single Unit Test** | `go test -v -run ^TestLoginSuccess$ ./internal/auth` |
-| **Single Subtest** | `go test -v -run ^TestLogin/InvalidPassword$ ./internal/auth` |
-| **Target Package with Race Detector** | `go test -race ./internal/auth` |
-| **Fast Short Mode (Skip slow tests)** | `go test -short ./path/to/affected/package` |
-| **Re-run only failed package** | `go test ./internal/storage` |
-| **Specific Build Tag (e.g. integration)**| `go test -tags=integration -run ^TestPostgresConnection$ ./internal/database` |
+| **Single test** | `go test -run '^TestLoginSuccess$' ./internal/auth` |
+| **Single subtest** | `go test -run '^TestLogin$/^InvalidPassword$' ./internal/auth` (`-run` splits on `/` and matches each level separately) |
+| **Package with race detector** | `go test -race ./internal/auth` |
+| **Skip slow tests** | `go test -short ./internal/auth` |
+| **Force a re-run instead of a cached pass** | `go test -count=1 ./internal/storage` |
+| **Stop at the first failure** | `go test -failfast ./internal/storage` |
+| **Expose order dependence** | `go test -shuffle=on ./internal/storage` (prints the seed; re-run with `-shuffle=<seed>`) |
+| **Integration build tag** | `go test -tags=integration -run '^TestPostgresConnection$' ./internal/database` |
+| **Machine-readable results** | `go test -json ./...` |
+
+### Test Caching
+
+`go test` in package-list mode caches successful results and replays them when the test binary, the files and environment variables it read, and the flags are unchanged, and only if every flag is cacheable (`-run`, `-short`, `-v`, `-timeout`, `-failfast`, `-cpu`, `-parallel`, `-skip`, `-list`, `-benchtime`, `-coverprofile`, `-outputdir`, `-fullpath`); the output shows `(cached)`. Other flags, such as `-count` or `-shuffle`, disable caching. Tests depending on other external state (a database, the network) can therefore report a stale pass. Use `-count=1` when re-running against changed external state. `go test` also runs a subset of `go vet` checks before testing; failures there fail the test run.
 
 ---
 
-## 2. Test Structure & Short Mode Discipline
+## 2. Test Structure & Short Mode
 
-Separate fast unit tests from slow integration/network tests using `testing.Short()` or build tags.
+Separate fast unit tests from slow integration tests with `testing.Short()` or build tags.
 
-### Using `testing.Short()`
+### `testing.Short()`
 
 ```go
-package database_test
-
-import (
-    "testing"
-)
-
 func TestDatabaseMigration(t *testing.T) {
     if testing.Short() {
-        t.Skip("skipping slow database migration test in short mode")
+        t.Skip("skipping database migration test in short mode")
     }
-
-    // Heavy integration test spinning up real database container...
+    // ...
 }
 ```
 
-### Using Build Tags for Integration Suites
+### Build Tags for Integration Suites
 
-Add a build constraint at the very top of heavy integration test files:
+Put the constraint on the first line of the file, followed by a blank line:
 
 ```go
 //go:build integration
 
 package api_test
 
-import (
-    "testing"
-)
+import "testing"
 
 func TestEndToEndPaymentFlow(t *testing.T) {
-    // Runs only when `go test -tags=integration ./...` is executed
+    // Runs only with: go test -tags=integration ./...
 }
 ```
 
+### Useful `testing` APIs
+
+- `t.Context()` (Go 1.24+): a context canceled just before the test's cleanup functions run.
+- `t.Cleanup(f)`: teardown that runs even when the test fails; prefer it over `defer` in helpers.
+- `t.TempDir()`, `t.Setenv(k, v)`, `t.Chdir(dir)` (Go 1.24+): scoped filesystem and environment changes, undone automatically.
+- `t.Helper()`: report failures at the caller's line.
+- `testing/synctest` (Go 1.25+): deterministic tests of time-dependent concurrent code (see the concurrency reference).
+- Fuzzing: `func FuzzX(f *testing.F)` with `go test -run '^$' -fuzz '^FuzzX$' -fuzztime 30s ./pkg` for parsers and decoders of untrusted input.
+
 ---
 
-## 3. `golangci-lint` Configuration & Linter Rules
+## 3. `golangci-lint` v2 Configuration
 
-`golangci-lint` is the industry-standard aggregated linter for Go.
+`golangci-lint` aggregates many linters. v2 (March 2025) changed the configuration format; a v1 file fails with `unsupported version of the configuration`. Convert one with `golangci-lint migrate`, and validate any config with `golangci-lint config verify`.
 
-### Recommended `.golangci.yml` Configuration
+### Example `.golangci.yml`
 
 ```yaml
-run:
-  timeout: 5m
-  tests: true
+version: "2"
 
 linters:
+  # "standard" (the default) enables errcheck, govet, ineffassign, staticcheck and unused.
+  default: standard
   enable:
-    - govet          # Reports suspicious constructs (printf errors, unreachable code)
-    - errcheck       # Ensures errors are checked
-    - staticcheck    # Advanced Go static analysis
-    - unused         # Finds unused constants, variables, functions, and types
-    - ineffassign    # Detects ineffectual assignments
-    - revive         # Fast, configurable drop-in replacement for golint
-    - gocritic       # Deep code analysis and style checks
-    - prealloc       # Finds slice declarations that could be preallocated
-    - bodyclose      # Checks whether HTTP response bodies are closed
+    - bodyclose
+    - gocritic
+    - revive
+  exclusions:
+    presets:
+      - std-error-handling
+      - common-false-positives
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
 
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
 ```
 
-### Targeted Lint Execution
+In v2, formatters live under `formatters:` and run with `golangci-lint fmt`; `run.timeout` is disabled by default; no exclusions apply unless configured under `linters.exclusions`. Extend the linter list for the project's needs rather than enabling everything; `revive`'s defaults, for example, require doc comments on every exported identifier.
+
+### Running
 
 ```bash
-# Run linter only on the modified package (Fast-Path)
+# Affected packages only (fast path)
 golangci-lint run ./internal/auth/...
 
-# Run linter across the entire repository (Full Verification)
+# Whole module (full verification)
 golangci-lint run ./...
+
+# Only issues introduced since a base revision, leaving the existing baseline aside
+golangci-lint run --new-from-rev=origin/main ./...
 ```
+
+### Installation
+
+golangci-lint's docs recommend the release binaries and say that `go install`, the tools pattern and the `go.mod` `tool` directive "aren't guaranteed to work". Pin the version in CI (for example via the official GitHub Action or install script with an explicit version) so local and CI results match.
 
 ---
 
 ## 4. Module Hygiene & Dependency Verification
 
-Preserve existing changes in `go.mod` and `go.sum`. Run tidy only for an authorized dependency change or a required repository check, and inspect its diff.
-
-### Dependency Maintenance Commands
+Preserve existing changes in `go.mod` and `go.sum`. Run `go mod tidy` only for an authorized dependency change or a required repository check, and inspect its diff.
 
 ```bash
-# Clean up unused dependencies and add missing ones
+# Report what tidy would change, without modifying files; non-zero exit if anything (Go 1.23+)
+go mod tidy -diff
+
+# Add missing and remove unused requirements
 go mod tidy
 
-# Verify hashes of downloaded dependencies against go.sum
+# Check that downloaded module sources in the cache haven't been modified
 go mod verify
 
-# Ensure go.mod and go.sum are cleanly formatted and synchronized
-git diff --exit-code go.mod go.sum
+# Explain why a module is required
+go mod why -m golang.org/x/sync
+
+# Known vulnerabilities reachable from the code (golang.org/x/vuln/cmd/govulncheck)
+govulncheck ./...
 ```
+
+### Tool Dependencies (Go 1.24+)
+
+Go-based tools a module runs (code generators, `benchstat`, `stringer`) can be recorded in `go.mod`:
+
+```bash
+go get -tool golang.org/x/tools/cmd/stringer   # adds a tool directive
+go tool stringer -type=State                    # runs the pinned version
+```
+
+This replaces the older `tools.go` file of blank imports. Tool dependencies share the module's dependency graph, which is why golangci-lint advises against installing itself this way.
 
 ---
 
@@ -127,38 +160,47 @@ git diff --exit-code go.mod go.sum
 
 | Anti-Pattern | Failure Mode | Pragmatic Solution |
 |---|---|---|
-| **Whole-Repo Test Runs on 1-Line Fix** | Wastes 2-5 minutes per edit iteration; breaks developer focus. | Use `go test -run ^TestName$ ./package` for immediate feedback. |
-| **Skipping `-race` on Concurrency Code** | Latent data races pass tests silently and corrupt production memory. | Always run `go test -race` on packages with channels or mutexes. |
-| **Unchecked HTTP Response Bodies** | Leaks TCP sockets and connection pool slots indefinitely. | Always `defer resp.Body.Close()` immediately after checking `err == nil`. |
-| **Slow Integration Tests in Default Suite** | Developers avoid running local tests because test suite takes 10 minutes. | Gate slow tests behind `testing.Short()` or `//go:build integration`. |
-| **Ignoring Unused Dependencies** | Bloats binary size and introduces supply chain vulnerability vectors. | Run `go mod tidy` when dependency changes require it. |
+| **Whole-repo test runs for a one-line fix** | Slow feedback on every iteration. | `go test -run '^TestName$' ./pkg` first; widen when the change warrants it. |
+| **Skipping `-race` on concurrency changes** | Data races pass ordinary tests and corrupt state in production. | Run `go test -race` on packages whose concurrent code changed. Expect it to be slower (the race detector docs cite 2-20x execution time and 5-10x memory). |
+| **Trusting a cached pass** | `(cached)` results hide changes in external state. | `-count=1` when external state changed. |
+| **Unclosed HTTP response bodies** | The connection can't be reused; sockets and goroutines pile up. | `defer resp.Body.Close()` right after checking the request error. |
+| **Slow integration tests in the default suite** | Developers stop running tests locally. | Gate them behind `testing.Short()` or `//go:build integration`. |
+| **Stale `go.mod` requirements** | Unused requirements don't enter the binary, but they enlarge the module graph and `go.sum` and show up in dependency and vulnerability scans. | `go mod tidy` when a dependency change calls for it; `go mod tidy -diff` in CI. |
+| **v1 `.golangci.yml` with golangci-lint v2** | The linter refuses to start. | `golangci-lint migrate`, then `golangci-lint config verify`. |
 
 ---
 
 ## 6. Concrete Code Comparisons
 
-### HTTP Response Body Closure
+### HTTP Request Lifetime and Body Closure
 
-#### ❌ ANTI-PATTERN: Leaked Response Body
+#### ❌ ANTI-PATTERN: No Timeout, No Context, Leaked Body
 ```go
-// BAD: If read fails or function returns early, response body leaks open connection
+// BAD: http.Get uses DefaultClient, which has no timeout, and the body is never closed
 resp, err := http.Get("https://api.example.com/data")
 if err != nil {
     return err
 }
-data, err := io.ReadAll(resp.Body) // Missing resp.Body.Close()!
+data, err := io.ReadAll(resp.Body)
 ```
 
-#### ✅ PRAGMATIC: Immediate Deferred Closure
+#### ✅ PRAGMATIC: Context, Status Check, Deferred Close
 ```go
-// GOOD: Connection is guaranteed to return to pool cleanly
-resp, err := http.Get("https://api.example.com/data")
+// GOOD: cancellable request, bounded read, connection returned to the pool
+req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.example.com/data", nil)
+if err != nil {
+    return fmt.Errorf("building request: %w", err)
+}
+resp, err := client.Do(req) // a shared *http.Client with a Timeout configured
 if err != nil {
     return fmt.Errorf("fetching data: %w", err)
 }
-defer resp.Body.Close() // Guaranteed closure
+defer resp.Body.Close()
 
-data, err := io.ReadAll(resp.Body)
+if resp.StatusCode != http.StatusOK {
+    return fmt.Errorf("fetching data: unexpected status %s", resp.Status)
+}
+data, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 if err != nil {
     return fmt.Errorf("reading response body: %w", err)
 }
@@ -166,18 +208,19 @@ if err != nil {
 
 ---
 
-## 7. Fast-Path CI Checklist
+## 7. Fast-Path Checklist
 
 ```bash
-# 1. Fast-Path local unit test
-go test -v -run ^TestTarget$ ./internal/domain
+# 1. Targeted test
+go test -run '^TestTarget$' ./internal/domain
 
-# 2. Package race check
+# 2. Package race check, if concurrent code changed
 go test -race ./internal/domain
 
-# 3. Targeted lint
+# 3. Targeted vet and lint
+go vet ./internal/domain
 golangci-lint run ./internal/domain/...
 
-# 4. Final module hygiene check
-git diff -- go.mod go.sum  # inspect dependency changes; tidy only when relevant
+# 4. Module hygiene, if dependencies changed
+go mod tidy -diff
 ```

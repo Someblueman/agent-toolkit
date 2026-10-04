@@ -1,28 +1,34 @@
 # Error Handling, Inspection, and Resilience
 
-Read this for explicit error wrapping (`%w`), inspection via `errors.Is` and `errors.As`, multiple error joining (`errors.Join`), sentinel vs typed errors, retry backoff loops, and panic avoidance policies.
+Read this for error wrapping (`%w`), inspection via `errors.Is`, `errors.As` and `errors.AsType`, joining errors (`errors.Join`), sentinel vs typed errors, panic policy, and retry with backoff.
 
 ---
 
 ## 1. Error Wrapping & Semantic Propagation
 
-Go treats errors as explicit values. When propagating errors up the call stack, add operational context while preserving the underlying causal error chain.
+Go treats errors as values. When propagating an error, add the context the caller lacks while preserving the cause the caller may need to inspect.
 
 ### Wrapping Rules: `%w` vs `%v`
 
-- **Use `%w`** when callers need to programmatically inspect the root cause (using `errors.Is` or `errors.As`):
+- **Use `%w`** when callers may need to inspect the cause with `errors.Is` or `errors.As`. Wrapping makes the cause part of your API, so wrap deliberately:
   ```go
-  if err := db.ExecContext(ctx, query); err != nil {
-      return fmt.Errorf("updating account balance %s: %w", accountID, err)
+  if _, err := db.ExecContext(ctx, query, accountID); err != nil {
+      return fmt.Errorf("updating balance for account %s: %w", accountID, err)
   }
   ```
-- **Use `%v`** when you deliberately want to redact or break the error chain at an architectural or trust boundary (e.g. hiding internal database errors from public API clients):
+- **Use `%v`** to deliberately break the chain at an architectural or trust boundary, for example so callers can't depend on an internal parser's error types:
   ```go
   if err := validateInternalToken(rawToken); err != nil {
-      // Intentionally do not wrap internal token parser error
       return fmt.Errorf("invalid authentication token: %v", err)
   }
   ```
+- One `fmt.Errorf` may contain several `%w` verbs (Go 1.20+); the result matches each wrapped error.
+
+### Message Style
+
+- Error strings are lowercase and have no trailing punctuation, because they are usually embedded in other messages: `"reading config: open app.toml: no such file or directory"`.
+- Describe what was being done (`"reading config"`), not that it failed (`"failed to read config"`); the error itself says it failed.
+- Don't repeat what the wrapped error already says (the file name in an `*fs.PathError`, for instance).
 
 ---
 
@@ -32,16 +38,18 @@ Go treats errors as explicit values. When propagating errors up the call stack, 
 
 | Error Type | When to Use | Declaration Idiom | Inspection Idiom |
 |---|---|---|---|
-| **Sentinel Error** | Fixed, static error conditions without dynamic metadata. | `var ErrNotFound = errors.New("resource not found")` | `errors.Is(err, ErrNotFound)` |
-| **Typed Error Struct** | Errors carrying dynamic parameters (e.g. HTTP status, field validation errors). | `type ValidationError struct { Field string; Msg string }` | `var valErr *ValidationError`<br>`if errors.As(err, &valErr) { ... }` |
-| **Formatted Error** | Contextual errors without specific program branching needs. | `fmt.Errorf("reading file %s: %w", path, err)` | Top-level logging or default handler. |
-| **Joined Errors** | Collecting errors across multiple parallel or sequential steps (Go 1.20+). | `errors.Join(err1, err2, err3)` | `errors.Is` and `errors.As` traverse all joined errors. |
+| **Sentinel error** | Fixed conditions without extra data. | `var ErrNotFound = errors.New("not found")` | `errors.Is(err, ErrNotFound)` |
+| **Typed error** | Errors carrying data the caller acts on (field name, status code). | `type ValidationError struct { Field, Msg string }` | `errors.As(err, &target)` or, on Go 1.26+, `errors.AsType[*ValidationError](err)` |
+| **Formatted error** | Context for humans, no programmatic branching expected. | `fmt.Errorf("reading %s: %w", path, err)` | Logged or returned at the top level. |
+| **Joined errors** | Several independent failures (cleanup steps, validation, parallel work). Go 1.20+. | `errors.Join(err1, err2)` | `errors.Is` and `errors.As` search every joined error. |
+
+Exported sentinels and error types are part of a package's API. Add them when callers need to branch, not for every failure.
 
 ---
 
-## 3. Idiomatic Error Inspection (`errors.Is` & `errors.As`)
+## 3. Error Inspection (`errors.Is`, `errors.As`, `errors.AsType`)
 
-Never inspect errors using string matching (`strings.Contains(err.Error(), "...")`). String inspection is brittle, breaks on refactorings, and violates encapsulation.
+Never inspect errors by matching text (`strings.Contains(err.Error(), "...")`). Messages change, wrapping changes them further, and the check silently stops matching.
 
 ```go
 package storage
@@ -49,7 +57,6 @@ package storage
 import (
     "errors"
     "fmt"
-    "io/fs"
 )
 
 var ErrRecordNotFound = errors.New("record not found")
@@ -68,39 +75,36 @@ func (e *DatabaseError) Unwrap() error {
     return e.Err
 }
 
-// Caller Inspection Example:
-func HandleError(err error) {
-    // 1. Check for sentinel error
-    if errors.Is(err, ErrRecordNotFound) {
-        // Return 404
-        return
-    }
+const codeDuplicateEntry = 1062
 
-    // 2. Check for typed error struct
-    var dbErr *DatabaseError
-    if errors.As(err, &dbErr) {
-        if dbErr.Code == 1062 { // Duplicate entry
-            // Return 409 Conflict
-            return
-        }
+// Status maps a storage error to an HTTP status code.
+func Status(err error) int {
+    if errors.Is(err, ErrRecordNotFound) {
+        return 404
     }
+    var dbErr *DatabaseError // on Go 1.26+: if dbErr, ok := errors.AsType[*DatabaseError](err); ok
+    if errors.As(err, &dbErr) && dbErr.Code == codeDuplicateEntry {
+        return 409
+    }
+    return 500
 }
 ```
 
+Return typed errors as pointers (`*DatabaseError`) consistently, and wrap the pointer, not a pointer to it: on Go 1.27 `go vet` flags `fmt.Errorf("%w", p)` where `p` is `*E` and `E` already implements `error`.
+
 ---
 
-## 4. Single-Path Error Handling & Guard Clauses
+## 4. Guard Clauses
 
-Always handle errors immediately using guard clauses. Do not nest the happy path inside `else` blocks.
+Handle errors immediately and keep the happy path unindented. Don't nest it inside `else` blocks.
 
 ```go
-// GOOD: Linear, clean guard clauses
-user, err := findUser(id)
+user, err := findUser(ctx, id)
 if err != nil {
     return fmt.Errorf("finding user %s: %w", id, err)
 }
 
-profile, err := loadProfile(user.ID)
+profile, err := loadProfile(ctx, user.ID)
 if err != nil {
     return fmt.Errorf("loading profile for %s: %w", user.ID, err)
 }
@@ -110,39 +114,46 @@ return render(profile)
 
 ---
 
-## 5. Panic Avoidance Policy
+## 5. Panic Policy
 
-Go provides `panic` and `recover`, but `panic` is **strictly reserved for unrecoverable programmer errors or package initialization failures**.
+Don't use `panic` for normal error handling.
 
-### Panic Decision Rubric
+- **Return errors for operational failures**: timeouts, missing records, invalid input, malformed JSON and permission errors are expected states.
+- **Acceptable panics**:
+  1. `Must`-style helpers used during initialization with constant inputs (`regexp.MustCompile`, `template.Must`).
+  2. Programmer bugs and impossible states, such as an unreachable case in an internal state machine.
+  3. Package-internal panic/recover as control flow (as `encoding/json` does) only if the panic never escapes the package's API.
+- **HTTP servers already recover handler panics**: `net/http` recovers a panic in `ServeHTTP`, logs the stack trace and closes the connection, isolating the failure to that request. Recovery middleware is only for a custom response or structured logging. It must re-panic `http.ErrAbortHandler`, and it does not cover goroutines the handler starts.
+- **Goroutines you start**: A panic in any goroutine without a `recover` in that goroutine crashes the whole process. That is usually the right outcome for a bug. Add a `recover` only where a supervisor can meaningfully restart the work.
 
-- **NEVER Panic for Operational Failures**: Network timeouts, missing database records, invalid user inputs, malformed JSON, and filesystem permission errors are normal operational states; return `error`.
-- **Permissible Panics**:
-  1. Package initialization wrappers (e.g. `template.Must`, `regexp.MustCompile`) during process boot.
-  2. Invariant violations that indicate a fatal internal bug (e.g. unreachable state in internal state machine).
-- **Top-Level Panic Recovery**: Protect HTTP servers and background workers from unexpected process crashes using recovery middleware:
-  ```go
-  func RecoveryMiddleware(next http.Handler) http.Handler {
-      return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-          defer func() {
-              if rec := recover(); rec != nil {
-                  log.Printf("PANIC recovered: %v\n%s", rec, debug.Stack())
-                  http.Error(w, "internal server error", http.StatusInternalServerError)
-              }
-          }()
-          next.ServeHTTP(w, r)
-      })
-  }
-  ```
+```go
+func Recover(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        defer func() {
+            rec := recover()
+            if rec == nil {
+                return
+            }
+            if rec == http.ErrAbortHandler {
+                panic(rec) // deliberate abort: let net/http handle it
+            }
+            slog.ErrorContext(r.Context(), "handler panic", "panic", rec, "stack", string(debug.Stack()))
+            http.Error(w, "internal server error", http.StatusInternalServerError)
+        }()
+        next.ServeHTTP(w, r)
+    })
+}
+```
 
 ---
 
-## 6. Resilience & Context-Aware Retry Loops
+## 6. Retry with Backoff
 
-When implementing retries for transient failures (e.g. HTTP 503, database connection drops), always enforce:
-1. **Exponential Backoff with Full Jitter** (prevents thundering herd problems).
-2. **Strict Context Cancellation Compliance** (`ctx.Done()`).
-3. **Maximum Retry Bounds**.
+Retry only operations that are safe to repeat (idempotent, or protected by an idempotency key) and only errors that are transient (timeouts, 503, connection resets). Every retry loop needs:
+1. **A retryability check**: permanent errors (bad input, 4xx, not found) return immediately.
+2. **Exponential backoff with full jitter and a cap**: sleep a random duration in `[0, min(maxDelay, base*2^attempt))`.
+3. **Cancellation**: stop waiting as soon as the context is done.
+4. **A bounded number of attempts**.
 
 ```go
 package retry
@@ -150,39 +161,37 @@ package retry
 import (
     "context"
     "fmt"
-    "math/rand"
+    "math/rand/v2"
     "time"
 )
 
-func DoWithRetry(ctx context.Context, maxAttempts int, initialDelay time.Duration, op func(ctx context.Context) error) error {
-    var lastErr error
-    delay := initialDelay
-
-    for attempt := 1; attempt <= maxAttempts; attempt++ {
+// Do calls op until it succeeds, returns a non-retryable error, the context is done,
+// or maxAttempts calls have been made. base and maxDelay must be positive.
+func Do(ctx context.Context, maxAttempts int, base, maxDelay time.Duration,
+    retryable func(error) bool, op func(context.Context) error) error {
+    delay := base
+    for attempt := 1; ; attempt++ {
         err := op(ctx)
-        if err == nil {
-            return nil
+        if err == nil || !retryable(err) {
+            return err
         }
-        lastErr = err
-
-        if attempt == maxAttempts {
-            break
+        if attempt >= maxAttempts {
+            return fmt.Errorf("giving up after %d attempts: %w", attempt, err)
         }
 
-        // Add full jitter: random between 0 and delay
-        jittered := time.Duration(rand.Float64() * float64(delay))
-        delay = delay * 2 // Exponential backoff
-
+        timer := time.NewTimer(rand.N(delay)) // full jitter
         select {
         case <-ctx.Done():
-            return fmt.Errorf("retry aborted by context (%w): last error: %w", ctx.Err(), lastErr)
-        case <-time.After(jittered):
+            timer.Stop()
+            return fmt.Errorf("retry stopped: %w (last error: %w)", context.Cause(ctx), err)
+        case <-timer.C:
         }
+        delay = min(2*delay, maxDelay)
     }
-
-    return fmt.Errorf("operation failed after %d attempts: %w", maxAttempts, lastErr)
 }
 ```
+
+Before writing one, check whether the client library already retries (many cloud SDKs and database drivers do); stacked retry layers multiply attempts.
 
 ---
 
@@ -190,11 +199,13 @@ func DoWithRetry(ctx context.Context, maxAttempts int, initialDelay time.Duratio
 
 | Anti-Pattern | Failure Mode | Pragmatic Solution |
 |---|---|---|
-| **String Substring Error Check** | `strings.Contains(err.Error(), "not found")` breaks when error text changes. | Define sentinel `var ErrNotFound = errors.New(...)` and check with `errors.Is`. |
-| **Ignored Error Returns** | `_ = f.Close()` or ignoring returned errors causes silent data loss. | Handle or explicitly log errors: `if err := f.Close(); err != nil { ... }`. |
-| **Double Error Logging & Return** | Logging `log.Println(err)` and returning `return err` creates log flood and duplicate entries. | Add context with `%w` and return; log only once at top-level boundary. |
-| **Unwrapped Error Formatting** | Using `fmt.Errorf("query error: %v", err)` strips causal chain, preventing `errors.Is`. | Use `%w` for error wrapping. |
-| **Panic on Bad Input** | Calling `panic("invalid email")` crashes the entire web server process. | Return `ValidationError` or typed domain error. |
+| **Substring error checks** | `strings.Contains(err.Error(), "not found")` breaks when wording or wrapping changes. | Sentinel or typed errors checked with `errors.Is`/`errors.As`. |
+| **Discarded errors** | `_ = enc.Encode(v)` or an unchecked call hides failures. | Handle or return every error. Ignoring an error needs a stated reason. |
+| **Unchecked `Close` on written files** | `Close` can report the final write failure, so data loss goes unnoticed. | Check `Close` (or `Sync` then `Close`) for files you wrote. Ignoring `Close` on read-only files is common. |
+| **Log and return** | The same error is logged at every layer. | Add context with `%w` and return; log once where it is handled. |
+| **`%v` where callers branch on the cause** | `fmt.Errorf("query: %v", err)` breaks `errors.Is` for callers that need it. | Use `%w` unless hiding the cause is intended. |
+| **Panic on bad input** | `panic("invalid email")` turns a client mistake into a crash or a 500. | Return a validation error. |
+| **Retrying everything** | Retrying permanent errors or non-idempotent writes wastes time or duplicates effects. | Classify errors; retry only safe, transient failures. |
 
 ---
 
@@ -204,12 +215,12 @@ func DoWithRetry(ctx context.Context, maxAttempts int, initialDelay time.Duratio
 
 #### ❌ ANTI-PATTERN: String Inspection
 ```go
-// BAD: Fragile string inspection that fails on any wording change
-func ProcessUser(id string) error {
-    err := repo.FindUser(id)
+// BAD: breaks on any wording change and discards the underlying context
+func ProcessUser(ctx context.Context, id string) error {
+    _, err := repo.FindUser(ctx, id)
     if err != nil {
         if strings.Contains(err.Error(), "not found") {
-            return ErrUserNotFound // Loss of underlying context
+            return ErrUserNotFound
         }
         return err
     }
@@ -217,36 +228,36 @@ func ProcessUser(id string) error {
 }
 ```
 
-#### ✅ PRAGMATIC: Standard `errors.Is` Inspection with `%w`
+#### ✅ PRAGMATIC: Sentinel + `%w` + `errors.Is`
 ```go
-// GOOD: Robust causal chain checking with wrapped context
 var ErrNotFound = errors.New("user not found")
 
 func (r *Repository) FindUser(ctx context.Context, id string) (*User, error) {
     var u User
-    if err := r.db.QueryRowContext(ctx, "SELECT ...", id).Scan(&u.ID); err != nil {
-        if errors.Is(err, sql.ErrNoRows) {
-            return nil, fmt.Errorf("querying user %s: %w", id, ErrNotFound)
-        }
-        return nil, fmt.Errorf("db failure: %w", err)
+    err := r.db.QueryRowContext(ctx, "SELECT id FROM users WHERE id = $1", id).Scan(&u.ID)
+    if errors.Is(err, sql.ErrNoRows) {
+        return nil, fmt.Errorf("querying user %s: %w", id, ErrNotFound)
+    }
+    if err != nil {
+        return nil, fmt.Errorf("querying user %s: %w", id, err)
     }
     return &u, nil
 }
 
-// Caller:
+// Caller: matches through any number of wrapping layers.
 if errors.Is(err, ErrNotFound) {
-    // Correctly handled across any number of wrapping layers
+    // ...
 }
 ```
 
 ---
 
-## 9. Fast-Path Error Verification Recipes
+## 9. Error Verification Recipes
 
 ```bash
-# Run tests for specific error paths in auth module
-go test -v -run ^TestAuthErrors ./internal/auth
+# Run the error-path tests of one package
+go test -run '^TestAuthErrors' ./internal/auth
 
-# Verify error wrapping behavior and failure boundaries
-go test -v -run ^TestErrorChainMatching$ ./internal/storage
+# Vet checks printf-style verbs, including misuse of %w
+go vet ./internal/storage
 ```

@@ -6,97 +6,92 @@ Read this for package layout, `internal/` boundaries, module design, interface d
 
 ## 1. Package Layout & Encapsulation
 
-Go organizes code into packages that provide distinct namespaces and encapsulation boundaries. Package structure should reflect domain capabilities rather than technical architectural layers.
+Go organizes code into packages that provide distinct namespaces and encapsulation boundaries. Package structure should reflect what each package provides rather than technical architectural layers. The Go team's guide is <https://go.dev/doc/modules/layout>; follow the repository's existing layout before either.
 
-### Standard Directory Hierarchy
+### Common Layout for a Module with Commands
 
 ```
 repo-root/
 ├── cmd/
-│   └── api-server/           # Application entrypoint: flags, config loading, dependency wiring
+│   └── api-server/           # One directory per command: flags, config loading, dependency wiring
 │       └── main.go
-├── internal/                 # Application-private packages (compiler-enforced isolation)
+├── internal/                 # Packages other modules cannot import (enforced by the go command)
 │   ├── auth/                 # Domain package: authentication logic, token generation
 │   ├── billing/              # Domain package: billing rules, payment processing
-│   ├── database/             # Storage adapter: SQL migrations, connection pool setup
-│   └── http/                 # Transport adapter: HTTP routing, handlers, middleware
-├── pkg/                      # (Optional) Truly reusable libraries intended for external import
+│   ├── sqlite/               # Storage adapter: migrations, queries
+│   └── httpapi/              # Transport adapter: routing, handlers, middleware
 ├── go.mod
 └── go.sum
 ```
 
-### Layout Decision Matrix
+The layout guide does not use a `pkg/` directory. Exported, importable packages can live at the module root or in their own directories. Keep `pkg/` only where a repository already uses it.
 
-| Layout Archetype | When to Use | Encapsulation Rule | Prohibited Anti-Patterns |
-|---|---|---|---|
-| **Flat Package** | Small-to-medium services (< 15 files) or CLI utilities | Single root package or single `internal/app` | Do not create subpackages for 1-2 small files. |
-| **Domain-Driven Modular** | Medium-to-large services with distinct subdomains | `internal/<domain>` per cohesive feature | Do not create horizontal tier packages (`controllers/`, `services/`, `models/`). |
-| **Reusable Library** | Standalone public SDKs or multi-repo utilities | Top-level or `pkg/<library>` | Do not put application-specific business logic in `pkg/`. |
+### Layout Choices
+
+| Layout | When to Use | Notes |
+|---|---|---|
+| **Single package** | Small libraries or a single command | All code in the module root (`package main` for a command). Split only when a package boundary clarifies the design. |
+| **Commands + `internal/`** | Services and multi-command repositories | Commands under `cmd/<name>/`, supporting code in `internal/<domain>/`. Group by feature or domain, not by tier (`controllers/`, `services/`, `models/`). |
+| **Importable library** | Packages meant for other modules | Exported packages at the root or in named subdirectories; keep helpers that are not part of the API in `internal/`. |
 
 ### Package Naming Rules
 
-1. **Single, Short, Lowercase Noun**: Choose concise words that describe what the package provides (e.g. `auth`, `sqlite`, `httpclient`, `tokens`, `jsonrpc`).
-2. **Never Stutter**: Avoid package names that duplicate type or function names. A caller writes `auth.Service`, not `auth.AuthService`; `token.Validator`, not `token.TokenValidator`.
-3. **Strictly Ban Garbage-Can Packages**: Never create `util`, `utils`, `common`, `shared`, `helpers`, `base`, `models`, or `types`. Such packages become chaotic dump grounds that violate cohesive domain boundaries and trigger circular dependency cycles.
+1. **Short, lowercase, single word**: No underscores or mixedCaps. Describe what the package provides (`auth`, `sqlite`, `httpclient`, `jsonrpc`).
+2. **Avoid stutter**: Callers see the package name, so `auth.Service` rather than `auth.AuthService`, `bufio.Reader` rather than `bufio.BufReader`.
+3. **Avoid uninformative names**: `util`, `common`, `helpers`, `misc`, `base`, `shared`, `models`, `types`, `interfaces`. They tell call sites nothing and accumulate unrelated code with imports from everywhere. Move each helper to the package that uses it or to a package named for what it does (`strcase`, `retry`).
 
 ---
 
-## 2. Interface Discipline & Concrete-first design
+## 2. Interface Discipline & Concrete-First Design
 
-Go interfaces are **satisfied implicitly**. This unique language capability enables consumer-driven interface definitions rather than producer-driven interface declarations.
+Go interfaces are **satisfied implicitly**, so the consumer of a dependency can declare the interface it needs without the implementation knowing about it.
 
 ### Core Principles
 
-1. **"Accept Interfaces, Return Structs"**:
-   - Functions and constructors should return concrete pointer or value types (`*Service`, `*Store`).
-   - Functions should accept the smallest interface required to perform their task (`io.Reader`, `fmt.Stringer`).
-2. **Define Interfaces at the Consumer Site**:
-   - The package that *uses* a dependency declares the interface it needs.
-   - The package that *implements* the dependency defines and exports only the concrete struct.
-3. **Keep Interfaces Tiny**:
-   - Idiomatic Go interfaces contain 1 or 2 methods. Large multi-method interfaces are brittle, difficult to implement, and violate the Single Responsibility Principle.
-4. **Concrete-first design for Interfaces**:
-   - Write concrete structs first.
-   - Prefer concrete code; introduce an abstraction when it simplifies a current requirement or expresses a necessary boundary or invariant.
-5. **Anti-Mock Sprawl Mandate**:
-   - Never extract single-implementation interfaces solely to generate mock objects with `mockery`, `gomock`, or `pegomock`.
-   - Test concrete structs directly against real in-memory dependencies (e.g., `net/http/httptest`, SQLite in-memory, `os.Pipe`), or write a simple concrete in-memory fake struct co-located with tests.
+1. **Accept interfaces, return concrete types**:
+   - Constructors and functions usually return concrete pointer or value types (`*Service`, `*Store`), so callers get the full API and new methods don't break anyone.
+   - Return an interface when hiding the implementation is the point or the implementation is chosen at runtime (`errors.New` returns `error`; `cipher.NewGCM` returns `cipher.AEAD`).
+   - Accept the smallest interface the function actually uses (`io.Reader`, `fmt.Stringer`).
+2. **Define interfaces at the consumer**: The package that uses a dependency declares the interface it needs. The implementing package exports the concrete type.
+3. **Don't define interfaces before they are used**: Without a real consumer it is hard to know which methods an interface needs.
+4. **Small interfaces are the norm**: One- or two-method interfaces (`io.Reader`, `io.Closer`) are common and compose well. Larger interfaces are acceptable when a consumer genuinely needs the methods together.
+5. **Concrete first**: Write concrete types first. Introduce an abstraction when it simplifies a current requirement or expresses a necessary boundary or invariant.
+6. **Don't add interfaces just for mocking**: Do not define an interface on the implementor side "for mocking". Design the API so it can be tested through the real implementation, using in-memory dependencies (`net/http/httptest`, an in-memory SQLite database, `net.Pipe`), or a small hand-written fake next to the test. Avoid generated-mock sprawl (`mockery`, `gomock`) for single-implementation types.
 
 ---
 
-## 3. Struct Construction & The Small Builder Ban
+## 3. Struct Construction
 
 ### Construction Decision Rubric
 
-| Struct Complexity | Recommended Idiom | Example |
+| Situation | Recommended Idiom | Example |
 |---|---|---|
-| **Simple** | Direct struct literal instantiation | `cfg := Config{Host: "localhost", Port: 8080}` |
-| **Validated / Invariant** | Standard constructor function | `func New(host string, port int) (*Client, error)` |
-| **Complex optional configuration** | Functional Options pattern | `func NewServer(addr string, opts ...Option) (*Server, error)` |
+| **No invariants; zero values are useful** | Struct literal | `cfg := Config{Host: "localhost", Port: 8080}` |
+| **Validation or required setup** | Constructor returning an error | `func New(host string, port int) (*Client, error)` |
+| **Many optional settings with defaults** | Config struct or functional options | `func NewServer(addr string, opts ...Option) (*Server, error)` |
 
-### Construction choices
-
-Prefer struct literals and simple constructors when they make requirements clear. Functional options or builders can help with actual optional configuration or staged validation. Avoid boilerplate that obscures required fields; field count alone is not a decision rule.
+Prefer struct literals and simple constructors when they make requirements clear. Functional options or builders can help with genuinely optional configuration or staged validation. Avoid boilerplate that obscures required fields; field count alone is not a decision rule. Make the zero value useful where practical (`sync.Mutex`, `bytes.Buffer`).
 
 ---
 
-## 4. Single-Path Execution & Atomic In-Place Refactoring
+## 4. Single-Path Execution & In-Place Refactoring
 
-Before renaming methods, modifying struct fields, or altering package paths, establish published API, durable-data, and cross-process contracts. Preserve or migrate those contracts as required. For internal interfaces:
-- Perform a **clean in-place replacement** and atomically update all call sites, internal usages, and tests in the same change wave.
-- **Forbidden Legacy Retention Anti-Patterns**:
-  - *Forwarding Shims*: Leaving deprecated wrapper functions without a published compatibility requirement:
+Before renaming methods, modifying struct fields, or altering package paths, establish published API, durable-data, and cross-process contracts. Preserve or migrate those contracts as required. For internal APIs:
+- Perform a **clean in-place replacement** and update all call sites, internal usages, and tests in the same change.
+- **Legacy retention anti-patterns** (when no published compatibility requirement exists):
+  - *Forwarding shims*:
     ```go
-    // BAD: Retaining deprecated forwarding shim
+    // BAD: deprecated wrapper kept although every caller is in this module
     // Deprecated: use NewClient instead.
     func New(host string) *Client { return NewClient(host) }
     ```
-  - *Zombie Decoders*: Retaining fallback unmarshaling branches for obsolete fields without explicit migration requirements:
+  - *Zombie decoders*: fallback decoding of obsolete fields without an explicit migration requirement:
     ```go
-    // BAD: Zombie fallback decoding
+    // BAD: zombie fallback decoding
     if raw["old_token"] != nil { ... }
     ```
-  - *Ghost Code*: Commenting out legacy code or leaving dead files (`legacy_store.go`).
+  - *Ghost code*: commented-out legacy code or dead files (`legacy_store.go`).
+- When an exported API must keep a deprecated wrapper for external callers, mark it `// Deprecated:` and, on Go 1.26+, add a `//go:fix inline` directive so `go fix` can rewrite callers to the replacement.
 
 ---
 
@@ -104,11 +99,11 @@ Before renaming methods, modifying struct fields, or altering package paths, est
 
 | Anti-Pattern | Why It Fails | Pragmatic Solution |
 |---|---|---|
-| **Producer-Side Interfaces** | Declaring `type UserService interface` next to `userService` creates coupling, boilerplate, and prevents caller customization. | Return `*UserService` concrete struct. Let callers define small interfaces if needed. |
-| **Garbage-Can `util` Package** | Becomes an unmaintainable grab-bag of unrelated utilities; causes circular import cycles. | Co-locate utilities with their domain package or create specific domain packages (`stringutil` -> `strcase`). |
-| **Speculative Builders ** | Creates builder boilerplate, verbose call sites, and unnecessary allocations. | Use direct struct literal instantiation or a simple `New(...)` constructor. |
-| **Package Stuttering** | `auth.AuthService` produces redundant `auth.AuthService` at call sites. | Name the type `auth.Service` so the call site reads cleanly as `auth.Service`. |
-| **Layered Tier Packages (`models/`, `controllers/`)** | Separates domain logic across horizontal tiers, leading to wide circular dependency issues. | Group by feature/domain: `internal/user`, `internal/order`. |
+| **Producer-side interfaces** | Declaring `type UserService interface` next to `userService` couples callers to the producer's method set and adds boilerplate. | Return `*user.Service`. Let callers define small interfaces if they need them. |
+| **Grab-bag `util` package** | Collects unrelated code, says nothing at call sites, and grows imports from everywhere. | Co-locate helpers with their users or name a package for what it does. |
+| **Speculative builders** | Builder boilerplate, verbose call sites, extra allocations. | Struct literal or a simple `New(...)` constructor. |
+| **Package stutter** | `auth.AuthService` repeats itself at every call site. | Name the type `auth.Service`. |
+| **Tier packages (`models/`, `controllers/`)** | Spreads one feature across horizontal packages that all import each other, inviting import cycles. | Group by feature or domain: `internal/user`, `internal/order`. |
 
 ---
 
@@ -116,12 +111,12 @@ Before renaming methods, modifying struct fields, or altering package paths, est
 
 ### Interface Placement & Concrete-First Design
 
-#### ❌ ANTI-PATTERN: Producer-Side Interface + Speculative Mocking
+#### ❌ ANTI-PATTERN: Producer-Side Interface Returned from the Constructor
 ```go
 // File: internal/user/service.go
 package user
 
-// BAD: Producer defines interface for its own single implementation
+// BAD: producer defines an interface for its own single implementation
 type UserService interface {
     Get(ctx context.Context, id string) (*User, error)
     Create(ctx context.Context, u *User) error
@@ -131,13 +126,13 @@ type userService struct {
     db *sql.DB
 }
 
-// BAD: Returns interface instead of concrete struct
+// BAD: returns the interface instead of the concrete type
 func NewUserService(db *sql.DB) UserService {
     return &userService{db: db}
 }
 ```
 
-#### ✅ PRAGMATIC: Concrete Struct Return + Consumer-Side Interface
+#### ✅ PRAGMATIC: Concrete Return + Consumer-Side Interface
 ```go
 // File: internal/user/service.go
 package user
@@ -147,12 +142,16 @@ import (
     "database/sql"
 )
 
-// GOOD: Export concrete struct directly
+type User struct {
+    ID string
+}
+
+// GOOD: export the concrete type
 type Service struct {
     db *sql.DB
 }
 
-// GOOD: Return concrete struct pointer
+// GOOD: return the concrete pointer
 func NewService(db *sql.DB) *Service {
     return &Service{db: db}
 }
@@ -163,25 +162,25 @@ func (s *Service) Get(ctx context.Context, id string) (*User, error) {
 }
 
 // ---------------------------------------------------------
-// File: internal/handler/user_handler.go
-package handler
+// File: internal/httpapi/users.go
+package httpapi
 
 import (
     "context"
-    "net/http"
-    "myproject/internal/user"
+
+    "example.com/app/internal/user"
 )
 
-// GOOD: Consumer defines tiny 1-method interface for what it specifically needs
-type UserGetter interface {
+// GOOD: the consumer declares the one method it needs
+type userGetter interface {
     Get(ctx context.Context, id string) (*user.User, error)
 }
 
 type Handler struct {
-    users UserGetter
+    users userGetter
 }
 
-func NewHandler(users UserGetter) *Handler {
+func NewHandler(users userGetter) *Handler {
     return &Handler{users: users}
 }
 ```
@@ -226,9 +225,9 @@ func (b *ClientBuilder) Build() (*Client, error) {
 }
 ```
 
-#### ✅ PRAGMATIC: Direct Constructor with Defaults
+#### ✅ PRAGMATIC: Config Struct with Defaults
 ```go
-// GOOD: Direct, clear, zero boilerplate constructor
+// GOOD: direct and clear; zero values select defaults
 type Client struct {
     endpoint string
     timeout  time.Duration
@@ -237,8 +236,8 @@ type Client struct {
 
 type Config struct {
     Endpoint string
-    Timeout  time.Duration // zero value defaults to 30s
-    Retries  int           // zero value defaults to 3
+    Timeout  time.Duration // zero means 30s
+    Retries  int           // zero means 3
 }
 
 func NewClient(cfg Config) (*Client, error) {
@@ -263,15 +262,20 @@ func NewClient(cfg Config) (*Client, error) {
 
 ---
 
-## 7. Fast-Path Package Inspection Recipes
+## 7. Package Inspection Recipes
+
+Importing another module's `internal/` package is rejected by `go build` and `go vet`; no separate check is needed.
 
 ```bash
-# Check package compilation and dependencies without full build
-go vet ./internal/auth/...
+# Direct imports of one package
+go list -f '{{.ImportPath}}: {{join .Imports " "}}' ./internal/auth
 
-# Verify internal package isolation (detect illegal external imports of internal/)
-go list -f '{{.ImportPath}} -> {{.Imports}}' ./...
+# Everything a package transitively depends on
+go list -deps ./internal/auth
 
-# Verify clean module dependency graph
+# Why the module needs a given dependency
+go mod why -m golang.org/x/sync
+
+# Check that downloaded module sources in the cache haven't been modified since download
 go mod verify
 ```
