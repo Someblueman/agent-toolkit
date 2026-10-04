@@ -22,7 +22,9 @@ policy artifact installed into the user's Codex home; do not put repository layo
 ## Installation and changes
 
 - Codex selects packages through `configs/codex/skills.txt` and copies each complete package.
-  OMP links the central `skills/` directory. Preserve those contracts when changing adapters.
+  OMP links the central `skills/` directory. Claude Code links each package selected by
+  `configs/claude/skills.txt` into its user skills directory. Preserve those contracts when
+  changing adapters.
 - When adding or moving a skill, update `docs/catalog.md`, affected installer selections,
   documentation, test paths, and quality-check roots together. Remove superseded sources.
 - Preserve installer ownership tracking, local-edit protection, and unrelated installed

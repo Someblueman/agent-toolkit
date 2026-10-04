@@ -1,0 +1,2 @@
+# Skills linked into Claude Code's user skills directory by scripts/install.sh claude.
+go-engineering

@@ -143,6 +143,77 @@ class InstallTest(unittest.TestCase):
         self.assertFalse((destination / "config.yml").is_symlink())
         self.assertEqual((destination / "config.yml").read_text(), "example: true\n")
 
+    def run_claude(self, *args, code=0):
+        result = subprocess.run(
+            ["bash", str(self.repo / "scripts/install.sh"), "claude", *args],
+            env={**os.environ, "CLAUDE_CONFIG_DIR": str(self.claude)},
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+        return result
+
+    @property
+    def claude(self):
+        return self.root / "claude with ' quote"
+
+    def test_claude_links_selected_skills_repeatably(self):
+        self.write("configs/claude/skills.txt", "# comment\nexample\n")
+        self.run_claude()
+        self.run_claude()
+        link = self.claude / "skills/example"
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(link.resolve(), (self.repo / "skills/example").resolve())
+        self.run_claude("--check")
+        self.write("skills/example/SKILL.md", "changed\n")
+        self.assertEqual((link / "SKILL.md").read_text(), "changed\n")
+
+    def test_claude_conflict_requires_force_and_backs_up_outside_skills(self):
+        self.write("configs/claude/skills.txt", "example\n")
+        existing = self.claude / "skills/example"
+        existing.mkdir(parents=True)
+        (existing / "SKILL.md").write_text("mine\n")
+        self.run_claude(code=1)
+        self.assertFalse(existing.is_symlink())
+        self.run_claude("--check", code=1)
+        self.run_claude("--force")
+        self.assertTrue(existing.is_symlink())
+        backups = list((self.claude / "agent-toolkit-backups").iterdir())
+        self.assertEqual(len(backups), 1)
+        self.assertEqual((backups[0] / "SKILL.md").read_text(), "mine\n")
+        self.assertEqual(
+            sorted(p.name for p in (self.claude / "skills").iterdir()), ["example"]
+        )
+
+    def test_claude_prune_removes_only_retired_toolkit_links(self):
+        self.write("configs/claude/skills.txt", "example\n")
+        self.run_claude()
+        skills = self.claude / "skills"
+        (skills / "unrelated").mkdir()
+        outside = self.root / "outside-skill"
+        outside.mkdir()
+        (skills / "external").symlink_to(outside)
+        self.write("configs/claude/skills.txt", "")
+        self.run_claude("--check", code=1)
+        self.run_claude("--prune", "--dry-run")
+        self.assertTrue((skills / "example").is_symlink())
+        self.run_claude("--prune")
+        self.assertFalse((skills / "example").is_symlink())
+        self.assertTrue((skills / "unrelated").is_dir())
+        self.assertTrue((skills / "external").is_symlink())
+        self.run_claude("--check")
+
+    def test_claude_readonly_modes_and_invalid_selection_do_not_install(self):
+        self.write("configs/claude/skills.txt", "example\n")
+        self.run_claude("--dry-run")
+        self.run_claude("--check", code=1)
+        self.assertFalse(self.claude.exists())
+        for selection in ["missing\n", "../example\n"]:
+            self.write("configs/claude/skills.txt", selection)
+            self.run_claude(code=1)
+            self.assertFalse(self.claude.exists())
+
     def test_invalid_state_and_linked_parent_cannot_redirect_pruning(self):
         self.run_cli()
         state = self.home / ".agent-toolkit-install.json"

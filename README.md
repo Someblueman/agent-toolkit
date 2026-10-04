@@ -23,7 +23,7 @@ agent-toolkit/
 
 1. Clone this repo somewhere stable (e.g. `~/.agent-toolkit`).
 2. Review `configs/codex/skills.txt` for the selected Codex skills, described in [docs/catalog.md](docs/catalog.md).
-3. Run `./scripts/install.sh codex --dry-run`, then `./scripts/install.sh codex`. Python 3.10+ is required. Use `omp` to install OMP's links and configuration.
+3. Run `./scripts/install.sh codex --dry-run`, then `./scripts/install.sh codex`. Python 3.10+ is required. Use `omp` to install OMP's links and configuration, and `claude` to link the skills selected in `configs/claude/skills.txt` into `~/.claude/skills/`.
 4. Re-run the same installer after repository updates. For Codex, `./scripts/install.sh codex --check` verifies the installed content without changing it.
 
 Codex refreshes unmodified managed content and reports local conflicts with exit code 1. Review differences before using `--force`. `--prune` removes only retired items recorded by this installer; independently installed skills and vendor-managed packages are left alone. See [Codex installation](configs/codex/README.md).

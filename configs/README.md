@@ -10,6 +10,7 @@ The source of truth lives in the top-level directories (`skills/`, `hooks/`, `ag
 
 - [codex/](codex/) — OpenAI Codex adapter (TOML/JSON files Codex expects).
 - [omp/](omp/) — Oh My Pi adapter (skills/agents symlinked, config copied; see its README for why).
+- [claude/](claude/) — Claude Code adapter (selected skills symlinked one by one into `~/.claude/skills/`).
 
 ## Adding a new agent adapter
 
