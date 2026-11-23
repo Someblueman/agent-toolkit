@@ -81,13 +81,14 @@ class WorkflowDispatch(WorkflowCase):
             self.packet()["workers"][0]["result"]["payload"],
             {"strengths": [], "improvements": [], "uncertainties": []},
         )
-        events = [
-            json.loads(line)
-            for line in self.events.read_text().splitlines()
-            if json.loads(line)["kind"] == "start"
-        ]
-        self.assertEqual(events[0]["effort"], "high")
-        self.assertIn("--thinking", events[1]["args"])
+        # The two members start concurrently, so look their events up by harness.
+        starts = {
+            event["harness"]: event
+            for event in map(json.loads, self.events.read_text().splitlines())
+            if event["kind"] == "start"
+        }
+        self.assertEqual(starts["claude"]["effort"], "high")
+        self.assertIn("--thinking", starts["pi"]["args"])
 
     def test_ambiguous_options_and_missing_executable_fail_before_launch(self):
         self.configure([member("one")])
