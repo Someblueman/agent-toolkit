@@ -8,6 +8,7 @@ The index of everything shippable in this toolkit. Updated when skills, hooks, a
 |------|-------------|--------|
 | [c-engineering](../skills/c-engineering/) | Implement, review, debug, and optimize C programs, libraries, and systems. | stable |
 | [claude-bridge](../skills/claude-bridge/) | Exchange isolated, asynchronous Claude or Muse replies with Codex. | draft |
+| [sol](../skills/sol/) | Delegate investigation, review, audits and scratch-clone code changes from Claude Code to ChatGPT Sol 6.2 via the Codex CLI. | draft |
 | [code-simplification](../skills/code-simplification/) | Diagnose and remove accidental complexity; enforce complexity budgets with differential parity testing. | draft |
 | [define-goal](../skills/define-goal/) | Define a clear, bounded goal for the session before acting on it. | stable |
 | [hardware-aware-optimization](../skills/hardware-aware-optimization/) | Hardware-aware optimization playbooks: SIMD, branchless, custom allocators, lock-free, PGO/LTO. | draft |
@@ -38,6 +39,7 @@ pending real-work pilots.
 | team-leader | `skills/team-leader/` | Selected for Codex; uses independent workstream owners in authorized worktrees, focused specialists, leader-owned integration, and one recovery heartbeat. |
 | teamwork-preview | `skills/teamwork-preview/` | Selected for Codex; imported from the existing personal installation on 2026-09-04 without changing behavior. |
 | workflow | `skills/workflow/` | Selected for Codex; imported from the existing personal installation on 2026-09-04 without changing behavior. Requires the external `afk` CLI. |
+| sol | `skills/sol/` | Claude Code only; not selected for installation (kept here as a backup). Requires the `codex` CLI logged in with a ChatGPT account. |
 
 All packages, including their optional agent metadata, live under `skills/`.
 `configs/codex/skills.txt` is the explicit Codex selection. The user requested installation of the three draft skills (`code-simplification`, `hardware-aware-optimization`, and `profiling-software-performance`); their draft status remains unchanged. `fanout` is selected for Codex and uses the installer-managed `agent-toolkit-root.txt` to locate its standalone tool in this checkout.
