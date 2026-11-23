@@ -32,7 +32,7 @@ def create_fake_claude(path: Path) -> Path:
         if mode == 'malformed':
             print('not json')
             sys.exit(0)
-        receipt = {'worker_id': worker, 'outcome': 'blocked' if mode == 'partial' and worker == 'worker-0002' else 'completed', 'summary': 'Reviewed', 'result_json': json.dumps({'model': args[args.index('--model') + 1] if '--model' in args else None, 'cwd': str(Path.cwd()), 'prompt': prompt})}
+        receipt = {'worker_id': worker, 'outcome': 'blocked' if mode == 'partial' and worker == 'worker-0002' else 'completed', 'summary': 'Reviewed', 'result_json': json.dumps({'model': args[args.index('--model') + 1] if '--model' in args else None, 'cwd': str(Path.cwd()), 'prompt': prompt, 'claude_worker': os.environ.get('CLAUDE_WORKER')})}
         print(json.dumps({'type': 'result', 'subtype': 'success', 'is_error': False, 'structured_output': receipt, 'usage': {'input_tokens': 10, 'output_tokens': 12, 'cache_creation_input_tokens': 5, 'cache_read_input_tokens': 15}, 'total_cost_usd': 0.01}))
     """)
     )

@@ -80,9 +80,11 @@ async def run_claude_worker(
     ]
     if model is not None:
         command.extend(["--model", model])
-    environment = None
+    # Mark the session as a worker, so user-level Claude Code setup (an orchestrator
+    # output style, prompt hooks) has it do its task instead of delegating it.
+    environment = {**os.environ, "CLAUDE_WORKER": "1"}
     if effort is not None:
-        environment = {**os.environ, "CLAUDE_CODE_EFFORT_LEVEL": effort}
+        environment["CLAUDE_CODE_EFFORT_LEVEL"] = effort
     return await run_structured_worker(
         worker_id=worker_id,
         command=command,

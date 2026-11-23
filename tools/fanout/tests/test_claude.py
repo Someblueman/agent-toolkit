@@ -36,6 +36,7 @@ class ClaudeHarness(BaseFanoutTestCase):
         self.assertIsNone(payload["model"])
         self.assertEqual(payload["cwd"], str(self.root.resolve()))
         self.assertIn(self.prompt.read_text().strip(), payload["prompt"])
+        self.assertEqual(payload["claude_worker"], "1")
 
     def test_model_override_and_partial_quorum(self):
         completed, packet = self.run_claude(

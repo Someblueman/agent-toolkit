@@ -172,6 +172,9 @@ packet); `--model sonnet` or another native alias/id overrides it.
 Configured tools, hooks, plugins, and permissions remain in effect. Fanout supplies no
 permission bypass or tool auto-approval. Claude's native print mode skips the workspace
 trust dialog: dispatch only in trusted directories. Hooks/plugins may still write state.
+Each worker runs with `CLAUDE_WORKER=1`, so user-level setup that would otherwise have the
+session orchestrate (an orchestrator output style or prompt hooks) can tell it to do its task
+itself.
 
 The adapter validates the `structured_output` receipt only in a successful native
 `result` envelope with `is_error: false`. Errors, text-only answers, wrong worker ids,
