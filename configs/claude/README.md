@@ -32,3 +32,35 @@ point to the old path and are reported as conflicts; rerun with `--force`.
 Agent-specific metadata such as `agents/openai.yaml` is part of each package and is
 ignored by Claude Code. Targeted at Claude Code's user skills directory
 (`~/.claude/skills/<name>/SKILL.md`).
+
+## Backed-up personal setup (not installed)
+
+These files are backups of the live copies under `~/.claude/`. `install.sh claude` does not
+install them, and `skills.txt` does not select `sol` or `ambition-check`. Copy them by hand.
+
+| Backup | Live location |
+|---|---|
+| [CLAUDE.md](CLAUDE.md) | `~/.claude/CLAUDE.md` |
+| [output-styles/orchestrator.md](output-styles/orchestrator.md) | `~/.claude/output-styles/orchestrator.md` |
+| [skills/sol/](../../skills/sol/) | `~/.claude/skills/sol/` |
+| [skills/ambition-check/](../../skills/ambition-check/) | `~/.claude/skills/ambition-check/` |
+| [hooks/session/ambition-check.sh](../../hooks/session/ambition-check.sh) | `~/.claude/hooks/ambition-check.sh` |
+
+They also need these entries in `~/.claude/settings.json`:
+
+```json
+{
+  "outputStyle": "Orchestrator",
+  "env": { "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet" },
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "~/.claude/hooks/ambition-check.sh", "timeout": 10 } ] }
+    ]
+  }
+}
+```
+
+The output style applies to every Claude Code session that loads user settings, including
+headless `claude -p` workers. A launcher that runs Claude as a worker should set
+`CLAUDE_WORKER=1`, so that the hook tells the session to do its task without delegating.
+`sol` also needs the `codex` CLI logged in with a ChatGPT account.

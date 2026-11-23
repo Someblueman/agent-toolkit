@@ -6,6 +6,7 @@ The index of everything shippable in this toolkit. Updated when skills, hooks, a
 
 | Name | Description | Status |
 |------|-------------|--------|
+| [ambition-check](../skills/ambition-check/) | Check the ask before substantial work: climb one rung to the outcome it serves and agree measurable success criteria. Claude Code; triggered by the ambition-check hook. | draft |
 | [c-engineering](../skills/c-engineering/) | Implement, review, debug, and optimize C programs, libraries, and systems. | stable |
 | [claude-bridge](../skills/claude-bridge/) | Exchange isolated, asynchronous Claude or Muse replies with Codex. | draft |
 | [sol](../skills/sol/) | Delegate investigation, review, audits and scratch-clone code changes from Claude Code to ChatGPT Sol 6.2 via the Codex CLI. | draft |
@@ -53,6 +54,7 @@ Codex's `.system` skills and plugin-cache skills remain vendor-managed; their so
 | Name | Description | Status |
 |---|---|---|
 | [quality](../hooks/session/quality.py) | Codex lifecycle entrypoint for the local quality checker; preserves scope and bounds repair continuation. | draft |
+| [ambition-check](../hooks/session/ambition-check.sh) | Claude Code UserPromptSubmit hook: asks for the ambition check on the first prompt of a session, and tells `CLAUDE_WORKER` sessions to do their task without delegating. | draft |
 
 ## Agents
 
@@ -63,6 +65,8 @@ Codex's `.system` skills and plugin-cache skills remain vendor-managed; their so
 | Name | Description | Status |
 |------|-------------|--------|
 | [codex/AGENTS.md](../configs/codex/AGENTS.md) | Codex engineering policy: anti-bloat, scope discipline, subagent restraint, tiered verification. Installed as `~/.codex/AGENTS.md`. | stable |
+| [claude/CLAUDE.md](../configs/claude/CLAUDE.md) | Claude Code global instructions: subagents on Sonnet, workers do not delegate further. Backup of `~/.claude/CLAUDE.md`. | draft |
+| [claude/output-styles/orchestrator.md](../configs/claude/output-styles/orchestrator.md) | Claude Code output style that makes the main session an orchestrator delegating to Sonnet subagents and Sol 6.2. Backup of `~/.claude/output-styles/orchestrator.md`. | draft |
 
 ## Tools
 
